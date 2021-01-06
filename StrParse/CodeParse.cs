@@ -18,7 +18,21 @@ namespace StrParse {
 			if (meta == null) throw new NullReferenceException();
 			switch (meta) {
 			case string s: return s.Substring(index, length);
-			case StringSubstitution ss: return ss.str;
+			case TokenSubstitution ss: {
+				if (ss.value == null) throw new ArgumentException();
+				switch (ss.value) {
+				case string v: return v;
+				case byte v: return v.ToString();
+				case short v: return v.ToString();
+				case int v: return v.ToString();
+				case long v: return v.ToString();
+				case float v: return v.ToString();
+				case double v: return v.ToString();
+				case uint v: return v.ToString();
+				case ulong v: return v.ToString();
+				}
+				throw new AmbiguousMatchException();
+			}
 			case Delim d: return d.text;
 			case ParseContext.Entry pce: return pce.fulltext.Substring(index, length);
 			}
@@ -33,22 +47,24 @@ namespace StrParse {
 		/// <summary>
 		/// what to replace this delimiter (and all characters until newIndex)
 		/// </summary>
-		public string replacementString;
+		public object replacementValue;
 		/// <summary>
 		/// null unless there was an error processing this delimeter
 		/// </summary>
 		public string error;
-		public ParseResult(int length, string str, string err = null) { lengthParsed = length; replacementString = str; error = err; }
+		public ParseResult(int length, object value, string err = null) { lengthParsed = length; replacementValue = value; error = err; }
 	}
-	public struct StringSubstitution { public string orig, str; public StringSubstitution(string o, string s) { orig = o; str = s; } }
+	public struct TokenSubstitution { public string orig; public object value; 
+		public TokenSubstitution(string o, object v) { orig=o; value=v; } }
 	public class DelimCtx : Delim {
 		public ParseContext Context => foundContext != null ? foundContext 
 			: ParseContext.allContexts.TryGetValue(contextName, out foundContext) ? foundContext : null;
 		private ParseContext foundContext = null;
 		public string contextName;
 		public bool isStart, isEnd;
-		public DelimCtx(string delim, string name=null, string desc=null, string ctx=null, bool s=false, bool e=false) 
-			: base(delim, name, desc) {
+		public DelimCtx(string delim, string name=null, string desc=null, Func<String,int,ParseResult> parseRule = null,
+			string ctx=null, bool s=false, bool e=false) 
+			: base(delim, name, desc, parseRule) {
 			contextName = ctx; isStart = s; isEnd = e;
 		}
 	}
@@ -77,6 +93,7 @@ namespace StrParse {
 		public static Delim[] _triangle_brace_delimiter = new Delim[] { new DelimCtx("<", ctx:"<>",s:true), new DelimCtx(">", ctx:"<>",e:true) };
 		public static Delim[] _ternary_operator_delimiter = new Delim[] { "?", ":", "??" };
 		public static Delim[] _instruction_finished_delimiter = new Delim[] { ";" };
+		public static Delim[] _list_item_delimiter = new Delim[] { "," };
 		public static Delim[] _membership_operator = new Delim[] { new Delim(".","member"), new Delim("->","pointee"), new Delim("::","scope resolution"), new Delim("?.","null conditional") };
 		public static Delim[] _prefix_unary_operator = new Delim[] { "++", "--", "!", "-", "~" };
 		public static Delim[] _postfix_unary_operator = new Delim[] { "++", "--" };
@@ -85,26 +102,42 @@ namespace StrParse {
 		public static Delim[] _assignment_operator = new Delim[] { "+=", "-=", "*=", "/=", "%=", "|=", "&=", "<<=", ">>=", "??=", "=" };
 		public static Delim[] _lambda_operator = new Delim[] { "=>" };
 		public static Delim[] _math_operator = new Delim[] { "+", "-", "*", "/", "%" };
+		public static Delim[] _hex_number_prefix = new Delim[] { new DelimCtx("0x",ctx:"0x",parseRule:HexadecimalParse) };
+		public static Delim[] _number = new Delim[] {
+			new DelimCtx("0",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("1",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("2",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("3",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("4",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("5",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("6",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("7",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("8",ctx:"number",parseRule:NumericParse),
+			new DelimCtx("9",ctx:"number",parseRule:NumericParse) };
 		public static Delim[] _block_comment_delimiter = new Delim[] { new DelimCtx("/*",ctx:"/**/",s:true), new DelimCtx("*/",ctx:"/**/",e:true) };
 		public static Delim[] _line_comment_delimiter = new Delim[] { new DelimCtx("//",ctx:"//",s:true) };
 		public static Delim[] _XML_line_comment_delimiter = new Delim[] { new DelimCtx("///",ctx:"///",s:true) };
 		public static Delim[] _end_of_line_comment = new Delim[] { new DelimCtx("\n",ctx:"//",e:true) };
+		public static Delim[] _erroneous_end_of_string = new Delim[] { new DelimCtx("\n", ctx: "string", e: true) };
 		public static Delim[] _end_of_XML_line_comment = new Delim[] { new DelimCtx("\n",ctx:"///",e:true) };
 		public static Delim[] _line_comment_continuation = new Delim[] { new Delim("\\", parseRule: CommentEscape) };
 		public static Delim[] _DelimitersNone = new Delim[] { };
 		public static char[] WhitespaceDefault = new char[] { ' ', '\t', '\n', '\r' };
 		public static char[] WhitespaceNone = new char[] { };
 
-		public static Delim[] CharLiteralDelimiters = CombinedDelimiterList(_char_escape_sequence, _char_delimiter);
-		public static Delim[] StringLiteralDelimiters = CombinedDelimiterList(_char_escape_sequence, _string_delimiter);
-		public static Delim[] StandardDelimiters = CombinedDelimiterList(_string_delimiter, _char_delimiter, _expression_delimiter, _code_body_delimiter, 
-			_square_brace_delimiter, _ternary_operator_delimiter, _instruction_finished_delimiter, _membership_operator, _prefix_unary_operator, _binary_operator,
-			_binary_logic_operatpor, _assignment_operator, _lambda_operator, _math_operator, _block_comment_delimiter, _line_comment_delimiter);
-		public static Delim[] LineCommentDelimiters = CombinedDelimiterList(_line_comment_continuation, _end_of_line_comment);
-		public static Delim[] XmlCommentDelimiters = CombinedDelimiterList(_line_comment_continuation, _end_of_XML_line_comment);
-		public static Delim[] CommentBlockDelimiters = CombinedDelimiterList(_block_comment_delimiter);
+		public static Delim[] CharLiteralDelimiters = CombineDelims(_char_escape_sequence, _char_delimiter);
+		public static Delim[] StringLiteralDelimiters = CombineDelims(_char_escape_sequence, _string_delimiter, _erroneous_end_of_string);
+		public static Delim[] StandardDelimiters = CombineDelims(_string_delimiter, _char_delimiter, 
+			_expression_delimiter, _code_body_delimiter, _square_brace_delimiter, _ternary_operator_delimiter, 
+			_instruction_finished_delimiter, _list_item_delimiter, _membership_operator, _prefix_unary_operator, 
+			_binary_operator, _binary_logic_operatpor, _assignment_operator, _lambda_operator, _math_operator, 
+			_block_comment_delimiter, _line_comment_delimiter, _number);
+		public static Delim[] LineCommentDelimiters = CombineDelims(_line_comment_continuation, _end_of_line_comment);
+		public static Delim[] XmlCommentDelimiters = CombineDelims(_line_comment_continuation, 
+			_end_of_XML_line_comment);
+		public static Delim[] CommentBlockDelimiters = CombineDelims(_block_comment_delimiter);
 
-		public static Delim[] CombinedDelimiterList(params Delim[][] delimGroups) {
+		public static Delim[] CombineDelims(params Delim[][] delimGroups) {
 			List<Delim> delims = new List<Delim>();
 			for(int i = 0; i < delimGroups.Length; ++i) { delims.AddRange(delimGroups[i]); }
 			delims.Sort();
@@ -131,7 +164,56 @@ namespace StrParse {
 			if (text.Length < other.text.Length) return 1;
 			return text.CompareTo(other.text);
 		}
-
+		public static ParseResult HexadecimalParse(string str, int index) {
+			return NumberParse(str, index+2, 16, false);
+		}
+		public static ParseResult NumericParse(string str, int index) {
+			return NumberParse(str, index, 10, true);
+		}
+		public static ParseResult IntegerParse(string str, int index) {
+			return NumberParse(str, index, 10, false);
+		}
+		public static int NumericValue(char c) {
+			if (c >= '0' && c <= '9') return c - '0';
+			if (c >= 'A' && c <= 'Z') return (c - 'A') + 10;
+			if (c >= 'a' && c <= 'z') return (c - 'a') + 10;
+			return -1;
+		}
+		public static bool IsValidNumber(char c, int numberBase) {
+			int h = NumericValue(c);
+			return h >= 0 && h < numberBase;
+		}
+		public static ParseResult NumberParse(string str, int index, int numberBase, bool includeDecimal) {
+			ParseResult pr = new ParseResult(0, null);
+			int numDigits = 0;
+			while(index + numDigits < str.Length && IsValidNumber(str[index + numDigits], numberBase)) { numDigits++; }
+			long sum = 0;
+			int b = 1, onesPlace = index+numDigits-1;
+			for(int i = 0; i < numDigits; ++i) {
+				sum += NumericValue(str[onesPlace - i]) * b;
+				b *= numberBase;
+			}
+			pr.replacementValue = (sum < int.MaxValue) ? (int)sum : sum;
+			pr.lengthParsed = numDigits;
+			double fraction = 0;
+			int numFractionDigits = 0;
+			if (includeDecimal && index + numDigits + 1 < str.Length && str[index+numDigits] == '.') {
+				int frac = onesPlace + 2;
+				while (frac + numFractionDigits < str.Length && 
+					IsValidNumber(str[frac + numFractionDigits], numberBase)) { numFractionDigits++; }
+				if(numFractionDigits == 0) {
+					pr.error = "decimal point with no subsequent digits";
+				}
+				b = numberBase;
+				for (int i = 0; i < numFractionDigits; ++i) {
+					fraction += NumericValue(str[frac + i]) / (double)b;
+					b *= numberBase;
+				}
+				pr.replacementValue = (fraction + sum);
+				pr.lengthParsed = numDigits + 1 + numFractionDigits;
+			}
+			return pr;
+		}
 		public static ParseResult CommentEscape(string str, int index) {
 			return StringEscape(str, index);
 		}
@@ -146,19 +228,10 @@ namespace StrParse {
 				return r;
 			}
 			char c = str[index + 1];
-			int Hex(char c) {
-				switch (c) {
-				case '0': return 0; case '1': return 1; case '2': return 2; case '3': return 3; case '4': return 4;
-				case '5': return 5; case '6': return 6; case '7': return 7; case '8': return 8; case '9': return 9;
-				case 'A': return 10; case 'B': return 11; case 'C': return 12; case 'D': return 13; case 'E': return 14; case 'F': return 15;
-				case 'a': return 10; case 'b': return 11; case 'c': return 12; case 'd': return 13; case 'e': return 14; case 'f': return 15;
-				}
-				return -1;
-			}
 			ParseResult ReadFunnyNumber(int index, string str, int expectedValues, int numberBase, int alreadyRead = 2) {
 				int value = 0, h = 0;
 				for (int i = 0; i < expectedValues; ++i) {
-					if (str.Length <= index + i || (h = Hex(str[index + i])) < 0 || h >= numberBase) {
+					if (str.Length <= index + i || (h = NumericValue(str[index + i])) < 0 || h >= numberBase) {
 						return new ParseResult(index, "", "expected base"+numberBase+" value #"+(i+1));
 					}
 					value += h * (int)Math.Pow(numberBase, expectedValues-1-i);
@@ -230,6 +303,8 @@ namespace StrParse {
 			Default = new ParseContext("default"),
 			String = new ParseContext("string"),
 			Char = new ParseContext("char"),
+			Number = new ParseContext("number"),
+			Hexadecimal = new ParseContext("0x"),
 			Expression = new ParseContext("()"),
 			SquareBrace = new ParseContext("[]"),
 			GenericArgs = new ParseContext("<>"),
@@ -241,6 +316,9 @@ namespace StrParse {
 			XmlCommentLine.delimiters = Delim.XmlCommentDelimiters;
 			CommentLine.delimiters = Delim.LineCommentDelimiters;
 			CommentBlock.delimiters = Delim.CommentBlockDelimiters;
+			String.whitespace = Delim.WhitespaceNone;
+			String.delimiters = Delim.StringLiteralDelimiters;
+			Number.whitespace = Delim.WhitespaceNone;
 		}
 		public class Entry {
 			public ParseContext context = null;
@@ -254,13 +332,19 @@ namespace StrParse {
 			public int IndexBegin => begin.index;
 			public int IndexEnd => end.index + end.length;
 			public int Length => IndexEnd - begin.index;
+			public int NextIndex(IList<Token> tokens, int index = 0) {
+				int endIndex = IndexEnd;
+				while (index + 1 < tokens.Count && tokens[index + 1].index < endIndex) { ++index; }
+				return index;
+			}
 		}
 		public Entry GetEntry(Token begin, string text, int depth, ParseContext.Entry parent = null) {
 			return new Entry { context = this, begin = begin, fulltext = text, depth=depth, parent=parent };
 		}
 	}
 	class CodeParse {
-		public static int Tokens(string str, List<Token> tokens, ParseContext a_context = null, int index = 0, List<int> indexOfNewRow = null) {
+		public static int Tokens(string str, List<Token> tokens, ParseContext a_context = null, 
+			int index = 0, List<int> indexOfNewRow = null) {
 			if (a_context == null) a_context = ParseContext.Default;
 			int tokenBegin = -1, tokenEnd = -1;
 			List<ParseContext.Entry> contextStack = new List<ParseContext.Entry>();
@@ -269,8 +353,6 @@ namespace StrParse {
 				char c = str[index];
 				Delim delim = currentContext.GetDelimiterAt(str, index);
 				if(delim != null) {
-					object meta = null;
-					//Token delimToken = new Token(str.Substring(index, delim.delim.Length), row+1, col+1, index, delim);
 					Token delimToken = new Token(delim, index, delim.text.Length);
 					if (tokenBegin >= 0 && tokenEnd < 0) {
 						tokenEnd = index;
@@ -280,9 +362,9 @@ namespace StrParse {
 					}
 					if (delim.parseRule != null) {
 						ParseResult pr = delim.parseRule.Invoke(str, index);
-						if (pr.replacementString != null) {
+						if (pr.replacementValue != null) {
 							delimToken.length = pr.lengthParsed;
-							delimToken.meta = new StringSubstitution(str, pr.replacementString);
+							delimToken.meta = new TokenSubstitution(str, pr.replacementValue);
 						}
 						index += pr.lengthParsed - 1;
 					} else {
@@ -292,7 +374,6 @@ namespace StrParse {
 						bool endProcessed = false;
 						if(contextStack.Count > 0 && dcx.Context == currentContext && dcx.isEnd) {
 							ParseContext.Entry endingContext = contextStack[contextStack.Count - 1];
-							//Console.WriteLine("leaving " + endingContext.context.name);
 							delimToken.meta = endingContext;
 							endingContext.end = delimToken;
 							contextStack.RemoveAt(contextStack.Count - 1);
@@ -309,7 +390,6 @@ namespace StrParse {
 							currentContext = dcx.Context;
 							delimToken.meta = newContext;
 							contextStack.Add(newContext);
-							//Console.WriteLine("going into " + dcx.Context.name);
 						}
 					}
 					tokens.Add(delimToken);
@@ -319,15 +399,17 @@ namespace StrParse {
 					if(tokenEnd < 0 && tokenBegin >= 0) {
 						tokenEnd = index;
 						int len = tokenEnd - tokenBegin;
-						//tokens.Add(new Token(str.Substring(tokenBegin, len), row+1, col+1 - len));
 						tokens.Add(new Token(str, tokenBegin, len));
 						tokenBegin = tokenEnd = -1;
 					}
 				}
+				if (indexOfNewRow != null && c == '\n') { indexOfNewRow.Add(index); }
 				++index;
-				if (indexOfNewRow != null && c == '\n') {
-					indexOfNewRow.Add(index);
-				}
+			}
+			if (tokenBegin >= 0 && tokenEnd < 0) {
+				tokenEnd = index;
+				int len = tokenEnd - tokenBegin;
+				tokens.Add(new Token(str, tokenBegin, len));
 			}
 			return index;
 		}
@@ -339,8 +421,13 @@ namespace StrParse {
 		}
 		public static string FilePositionOf(Token token, List<int> indexOfNewRow) {
 			FilePositionOf(token, indexOfNewRow, out int row, out int col);
-			return (row+1) + "," + (col+1);
+			return (row+1) + "," + (col);
 		}
+		/// <summary>
+		/// converts a string from it's code to it's compiled form, with processed escape sequences
+		/// </summary>
+		/// <param name="str"></param>
+		/// <returns></returns>
 		public static string ResolveString(string str) {
 			ParseResult parse;
 			StringBuilder sb = new StringBuilder();
@@ -354,10 +441,10 @@ namespace StrParse {
 						Console.ForegroundColor = ConsoleColor.Red;
 						Console.WriteLine("@" + i + ": " + parse.error);
 					}
-					if (parse.replacementString != null) {
-						sb.Append(parse.replacementString);
+					if (parse.replacementValue != null) {
+						sb.Append(parse.replacementValue);
 					}
-					Console.WriteLine("replacing " + str.Substring(i, parse.lengthParsed) + " with " + parse.replacementString);
+					Console.WriteLine("replacing " + str.Substring(i, parse.lengthParsed) + " with " + parse.replacementValue);
 					stringStarted = i + parse.lengthParsed;
 					i = stringStarted - 1;
 				}
