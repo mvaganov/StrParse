@@ -2,42 +2,60 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 
 namespace StrParse {
-	public struct Token {
+	public struct Token : IEquatable<Token> {
 		public int index, length; // 64 bits
 		public object meta; // 64 bits
 		public Token(object meta, int i, int len) {
 			this.meta = meta; index = i; length = len;
 		}
 		//public string ToString(string str) { return str.Substring(index, length); }
-		public static Token None = new Token(null, 0,0);
+		public static Token None = new Token(null, -1,-1);
 		public int Begin => index;
 		public int End => index + length;
+		public string ToString(string s) { return s.Substring(index, length); }
 		public override string ToString() {
 			if (meta == null) throw new NullReferenceException();
 			switch (meta) {
-			case string s: return s.Substring(index, length);
+			case string s: return ToString(s);
 			case TokenSubstitution ss: {
 				if (ss.value == null) throw new ArgumentException();
 				switch (ss.value) {
-				case string v: return v;
+				case bool v: return v.ToString();
+				case sbyte v: return v.ToString();
 				case byte v: return v.ToString();
+				case char v: return v.ToString();
+				case ushort v: return v.ToString();
 				case short v: return v.ToString();
 				case int v: return v.ToString();
-				case long v: return v.ToString();
-				case float v: return v.ToString();
-				case double v: return v.ToString();
 				case uint v: return v.ToString();
+				case float v: return v.ToString();
+				case long v: return v.ToString();
 				case ulong v: return v.ToString();
+				case double v: return v.ToString();
+				case string v: return v;
 				}
 				throw new AmbiguousMatchException();
 			}
 			case Delim d: return d.text;
-			case ParseContext.Entry pce: return pce.fulltext.Substring(index, length);
+			case Context.Entry pce: return pce.fulltext.Substring(index, length);
 			}
 			throw new DecoderFallbackException();
 		}
+
+		public bool Equals(Token other) { return index == other.index && length == other.length && meta == other.meta; }
+		public override bool Equals(object obj) { if (obj is Token t) return Equals(t); return false; }
+		public override int GetHashCode() { return meta.GetHashCode() ^ index ^ length; }
+		public static bool operator ==(Token lhs, Token rhs) { return lhs.Equals(rhs); }
+		public static bool operator !=(Token lhs, Token rhs) { return !lhs.Equals(rhs); }
+
+		public string AsBasicToken { get { if (meta is string s) { return s.Substring(index, length); } return null; } }
+		public Context.Entry ContextEntry { get { if (meta is Context.Entry ctx) { return ctx; } return null; } }
+		public bool IsContextBeginning { get { if (meta is Context.Entry ctx) { return ctx.begin == this; } return false; } }
+		public bool IsContextEnding { get { if (meta is Context.Entry ctx) { return ctx.end == this; } return false; } }
+		public bool IsValid => index >= 0 && length >= 0;
 	}
 	public struct ParseResult {
 		/// <summary>
@@ -57,9 +75,9 @@ namespace StrParse {
 	public struct TokenSubstitution { public string orig; public object value; 
 		public TokenSubstitution(string o, object v) { orig=o; value=v; } }
 	public class DelimCtx : Delim {
-		public ParseContext Context => foundContext != null ? foundContext 
-			: ParseContext.allContexts.TryGetValue(contextName, out foundContext) ? foundContext : null;
-		private ParseContext foundContext = null;
+		public Context Context => foundContext != null ? foundContext 
+			: Context.allContexts.TryGetValue(contextName, out foundContext) ? foundContext : null;
+		private Context foundContext = null;
 		public string contextName;
 		public bool isStart, isEnd;
 		public DelimCtx(string delim, string name=null, string desc=null, Func<String,int,ParseResult> parseRule = null,
@@ -275,12 +293,12 @@ namespace StrParse {
 			return r;
 		}
 	}
-	public class ParseContext {
+	public class Context {
 		public string name = "default";
 		public char[] whitespace = Delim.WhitespaceDefault;
 		public Delim[] delimiters = Delim.StandardDelimiters;
 
-		public ParseContext(string name) {
+		public Context(string name) {
 			this.name = name;
 			allContexts[name] = this;
 		}
@@ -297,22 +315,22 @@ namespace StrParse {
 			return delimiters[i];
 		}
 
-		public static Dictionary<string, ParseContext> allContexts = new Dictionary<string, ParseContext>();
+		public static Dictionary<string, Context> allContexts = new Dictionary<string, Context>();
 
-		public static ParseContext
-			Default = new ParseContext("default"),
-			String = new ParseContext("string"),
-			Char = new ParseContext("char"),
-			Number = new ParseContext("number"),
-			Hexadecimal = new ParseContext("0x"),
-			Expression = new ParseContext("()"),
-			SquareBrace = new ParseContext("[]"),
-			GenericArgs = new ParseContext("<>"),
-			XmlCommentLine = new ParseContext("///"),
-			CommentLine = new ParseContext("//"),
-			CommentBlock = new ParseContext("/**/"),
-			CodeBody = new ParseContext("{}");
-		static ParseContext() {
+		public static Context
+			Default = new Context("default"),
+			String = new Context("string"),
+			Char = new Context("char"),
+			Number = new Context("number"),
+			Hexadecimal = new Context("0x"),
+			Expression = new Context("()"),
+			SquareBrace = new Context("[]"),
+			GenericArgs = new Context("<>"),
+			XmlCommentLine = new Context("///"),
+			CommentLine = new Context("//"),
+			CommentBlock = new Context("/**/"),
+			CodeBody = new Context("{}");
+		static Context() {
 			XmlCommentLine.delimiters = Delim.XmlCommentDelimiters;
 			CommentLine.delimiters = Delim.LineCommentDelimiters;
 			CommentBlock.delimiters = Delim.CommentBlockDelimiters;
@@ -321,34 +339,37 @@ namespace StrParse {
 			Number.whitespace = Delim.WhitespaceNone;
 		}
 		public class Entry {
-			public ParseContext context = null;
+			public Context context = null;
 			public Entry parent = null;
 			public Token begin = Token.None, end = Token.None;
-			public int depth;
+			public int depth { get { Entry p = parent; int n = 0; while(p != null) { p = p.parent; ++n; } return n; } }
 			public string fulltext;
 			public string Text => fulltext.Substring(IndexBegin, Length);
 			public bool IsText => context == String || context == Char;
+			public bool IsEnclosure => context == Expression || context == CodeBody || context == SquareBrace;
 			public bool IsComment => context == CommentLine || context == XmlCommentLine || context == CommentBlock;
 			public int IndexBegin => begin.index;
 			public int IndexEnd => end.index + end.length;
 			public int Length => IndexEnd - begin.index;
-			public int NextIndex(IList<Token> tokens, int index = 0) {
+			public int IndexAfter(IList<Token> tokens, int index = 0) {
 				int endIndex = IndexEnd;
 				while (index + 1 < tokens.Count && tokens[index + 1].index < endIndex) { ++index; }
 				return index;
 			}
 		}
-		public Entry GetEntry(Token begin, string text, int depth, ParseContext.Entry parent = null) {
-			return new Entry { context = this, begin = begin, fulltext = text, depth=depth, parent=parent };
+		public Entry GetEntry(Token begin, string text, Context.Entry parent = null) {
+			Entry e = new Entry { context = this, begin = begin, fulltext = text, parent = parent };
+			e.begin.meta = e;
+			return e;
 		}
 	}
 	class CodeParse {
-		public static int Tokens(string str, List<Token> tokens, ParseContext a_context = null, 
+		public static int Tokens(string str, List<Token> tokens, Context a_context = null, 
 			int index = 0, List<int> indexOfNewRow = null) {
-			if (a_context == null) a_context = ParseContext.Default;
+			if (a_context == null) a_context = Context.Default;
 			int tokenBegin = -1, tokenEnd = -1;
-			List<ParseContext.Entry> contextStack = new List<ParseContext.Entry>();
-			ParseContext currentContext = a_context;
+			List<Context.Entry> contextStack = new List<Context.Entry>();
+			Context currentContext = a_context;
 			while(index < str.Length) {
 				char c = str[index];
 				Delim delim = currentContext.GetDelimiterAt(str, index);
@@ -373,7 +394,7 @@ namespace StrParse {
 					if (delim is DelimCtx dcx) {
 						bool endProcessed = false;
 						if(contextStack.Count > 0 && dcx.Context == currentContext && dcx.isEnd) {
-							ParseContext.Entry endingContext = contextStack[contextStack.Count - 1];
+							Context.Entry endingContext = contextStack[contextStack.Count - 1];
 							delimToken.meta = endingContext;
 							endingContext.end = delimToken;
 							contextStack.RemoveAt(contextStack.Count - 1);
@@ -385,8 +406,8 @@ namespace StrParse {
 							endProcessed = true;
 						}
 						if(!endProcessed && dcx.isStart) {
-							ParseContext.Entry newContext = dcx.Context.GetEntry(delimToken, str, contextStack.Count+1);
-							if(contextStack.Count > 0) { newContext.parent = contextStack[contextStack.Count - 1]; }
+							Context.Entry parentContext = (contextStack.Count > 0) ? contextStack[contextStack.Count - 1] : null;
+							Context.Entry newContext = dcx.Context.GetEntry(delimToken, str, parentContext);
 							currentContext = dcx.Context;
 							delimToken.meta = newContext;
 							contextStack.Add(newContext);
@@ -413,15 +434,15 @@ namespace StrParse {
 			}
 			return index;
 		}
-		public static void FilePositionOf(Token token, List<int> indexOfNewRow, out int row, out int col) {
-			row = indexOfNewRow.BinarySearch(token.index);
+		public static void FilePositionOf(Token token, IList<int> indexOfNewRow, out int row, out int col) {
+			row = indexOfNewRow.BinarySearchIndexOf(token.index);
 			if(row < 0) { row = ~row; }
 			int rowStart = row > 0 ? indexOfNewRow[row - 1] : 0;
 			col = token.index - rowStart;
 		}
-		public static string FilePositionOf(Token token, List<int> indexOfNewRow) {
+		public static string FilePositionOf(Token token, IList<int> indexOfNewRow) {
 			FilePositionOf(token, indexOfNewRow, out int row, out int col);
-			return (row+1) + "," + (col);
+			return (row+1) + "," + (col+1);
 		}
 		/// <summary>
 		/// converts a string from it's code to it's compiled form, with processed escape sequences
@@ -444,7 +465,7 @@ namespace StrParse {
 					if (parse.replacementValue != null) {
 						sb.Append(parse.replacementValue);
 					}
-					Console.WriteLine("replacing " + str.Substring(i, parse.lengthParsed) + " with " + parse.replacementValue);
+					//Console.WriteLine("replacing " + str.Substring(i, parse.lengthParsed) + " with " + parse.replacementValue);
 					stringStarted = i + parse.lengthParsed;
 					i = stringStarted - 1;
 				}

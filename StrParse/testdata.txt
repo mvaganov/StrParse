@@ -2,4 +2,5 @@
 ,3.456 7
 	}
 	text"oh m\x41i goodness"
+	things{a:1,b:2}
 }
