@@ -364,6 +364,7 @@ namespace StrParse {
 			public int IndexEnd => end.index + end.length;
 			public int Length => IndexEnd - begin.index;
 			public int IndexAfter(IList<Token> tokens, int index = 0) {
+				if (end.index < 0) return tokens.Count;
 				int endIndex = IndexEnd;
 				while (index + 1 < tokens.Count && tokens[index + 1].index < endIndex) { ++index; }
 				return index;
