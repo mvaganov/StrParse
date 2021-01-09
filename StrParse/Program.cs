@@ -33,6 +33,7 @@ namespace StrParse {
 			if (testData.values != null) { Console.WriteLine(string.Join(", ", testData.values)); }
 			Console.WriteLine(testData.things.a);
 			Console.WriteLine(testData.things.b);
+			Console.WriteLine(CodeConvert.Stringify(testData, 0, true));
 			if (!parsed) {
 				for(int i = 0; i < errors.Count; ++i) {
 					Console.WriteLine(errors[i]);

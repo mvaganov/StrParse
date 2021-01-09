@@ -104,7 +104,7 @@ namespace StrParse {
 
 		public static Delim[] _string_delimiter = new Delim[] { new DelimCtx("\"", ctx:"string",s:true,e:true), };
 		public static Delim[] _char_delimiter = new Delim[] { new DelimCtx("\'", ctx:"char",s:true,e:true), };
-		public static Delim[] _char_escape_sequence = new Delim[] { new Delim("\\", parseRule: StringEscape) };
+		public static Delim[] _char_escape_sequence = new Delim[] { new Delim("\\", parseRule: UnescapeString) };
 		public static Delim[] _expression_delimiter = new Delim[] { new DelimCtx("(", ctx:"()",s:true), new DelimCtx(")", ctx:"()",e:true) };
 		public static Delim[] _code_body_delimiter = new Delim[] { new DelimCtx("{", ctx:"{}",s:true), new DelimCtx("}", ctx:"{}",e:true) };
 		public static Delim[] _square_brace_delimiter = new Delim[] { new DelimCtx("[", ctx:"[]",s:true), new DelimCtx("]", ctx:"[]",e:true) };
@@ -139,6 +139,18 @@ namespace StrParse {
 		public static Delim[] _erroneous_end_of_string = new Delim[] { new DelimCtx("\n", ctx: "string", e: true) };
 		public static Delim[] _end_of_XML_line_comment = new Delim[] { new DelimCtx("\n",ctx:"///",e:true) };
 		public static Delim[] _line_comment_continuation = new Delim[] { new Delim("\\", parseRule: CommentEscape) };
+		public static Delim[] _data_keyword = new Delim[] { "null", "true", "false", "bool", "int", "short", "string", "long", "byte", 
+			"float", "double", "uint", "ushort", "sbyte", "char", "if", "else", "void", "var", "new", "as", };
+		public static Delim[] _data_c_sharp_keyword = new Delim[] {
+			"abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class",
+			"const", "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event",
+			"explicit", "extern", "false", "finally", "fixed", "float", "for", "foreach", "goto", "if",
+			"implicit", "in", "int", "interface", "internal", "is", "lock", "long", "namespace", "new", "null",
+			"object", "operator", "out", "override", "params", "private", "protected", "public", "readonly",
+			"ref", "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static", "string", "struct",
+			"switch", "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe",
+			"ushort", "using", "virtual", "void", "volatile", "while"
+		};
 		public static Delim[] _DelimitersNone = new Delim[] { };
 		public static char[] WhitespaceDefault = new char[] { ' ', '\t', '\n', '\r' };
 		public static char[] WhitespaceNone = new char[] { };
@@ -233,9 +245,9 @@ namespace StrParse {
 			return pr;
 		}
 		public static ParseResult CommentEscape(string str, int index) {
-			return StringEscape(str, index);
+			return UnescapeString(str, index);
 		}
-		public static ParseResult StringEscape(string str, int index) {
+		public static ParseResult UnescapeString(string str, int index) {
 			ParseResult r = new ParseResult(0, null); // by default, nothing happened
 			if(str.Length <= index) {
 				r.error = "invalid arguments";
@@ -449,7 +461,7 @@ namespace StrParse {
 		/// </summary>
 		/// <param name="str"></param>
 		/// <returns></returns>
-		public static string ResolveString(string str) {
+		public static string Unescape(string str) {
 			ParseResult parse;
 			StringBuilder sb = new StringBuilder();
 			int stringStarted = 0;
@@ -457,7 +469,7 @@ namespace StrParse {
 				char c = str[i];
 				if (c == '\\') {
 					sb.Append(str.Substring(stringStarted, i - stringStarted));
-					parse = Delim.StringEscape(str, i);
+					parse = Delim.UnescapeString(str, i);
 					if (parse.error != null) {
 						Console.ForegroundColor = ConsoleColor.Red;
 						Console.WriteLine("@" + i + ": " + parse.error);
@@ -471,6 +483,35 @@ namespace StrParse {
 				}
 			}
 			sb.Append(str.Substring(stringStarted, str.Length - stringStarted));
+			return sb.ToString();
+		}
+
+		public static string Escape(string str) {
+			StringBuilder sb = new StringBuilder();
+			for(int i = 0; i < str.Length; ++i) {
+				char c = str[i];
+				switch (c) {
+				case '\a': sb.Append("\\a"); break;
+				case '\b': sb.Append("\\b"); break;
+				case '\n': sb.Append("\\n"); break;
+				case '\r': sb.Append("\\r"); break;
+				case '\f': sb.Append("\\f"); break;
+				case '\t': sb.Append("\\t"); break;
+				case '\v': sb.Append("\\v"); break;
+				case '\'': sb.Append("\\\'"); break;
+				case '\"': sb.Append("\\\""); break;
+				case '\\': sb.Append("\\\\"); break;
+				default:
+					if(c < 32 || (c > 127 && c < 512)) {
+						sb.Append("\\").Append(Convert.ToString((int)c, 8));
+					} else if(c >= 512) {
+						sb.Append("\\u").Append(((int)c).ToString("X4"));
+					} else {
+						sb.Append(c);
+					}
+					break;
+				}
+			}
 			return sb.ToString();
 		}
 	}

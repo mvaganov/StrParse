@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 
 namespace StrParse {
 	class CodeConvert {
@@ -160,7 +161,7 @@ namespace StrParse {
 				int indexAfterContext = context.IndexAfter(tokens, i);
 				if (context.IsText) {
 					string text = context.Text;
-					value = CodeParse.ResolveString(text.Substring(1, text.Length - 2));
+					value = CodeParse.Unescape(text.Substring(1, text.Length - 2));
 				} else if (!TryParse(typeToGet, tokens.GetRange(i, indexAfterContext - i), ref value, rows, errors)) {
 					return false;
 				}
@@ -226,6 +227,57 @@ namespace StrParse {
 				}
 			} catch { return false; }
 			return true;
+		}
+
+		public static string Indent(int depth) {
+			StringBuilder sb = new StringBuilder();
+			while (depth-- > 0) {
+				sb.Append("  ");
+			}
+			return sb.ToString();
+		}
+		public static string Stringify(object obj, int depth, bool pretty = false) {
+			if (obj == null) return "null";
+			Type t = obj.GetType();
+			StringBuilder sb = new StringBuilder();
+			FieldInfo[] fi = t.GetFields();
+			if(IsPrimitiveType(obj.GetType())) {
+				if (obj is string s) {
+					sb.Append("\"").Append(CodeParse.Escape(s)).Append("\"");
+				} else {
+					sb.Append(obj.ToString());
+				}
+			} else if (t.IsArray) {
+				sb.Append("[");
+				Array a = obj as Array;
+				if (IsPrimitiveType(t.GetElementType())) {
+					for(int i = 0; i < a.Length; ++i) {
+						if (i > 0) { sb.Append(","); if (pretty) sb.Append(" "); }
+						sb.Append(Stringify(a.GetValue(i),depth+1, pretty));
+					}
+				} else {
+					for(int i = 0; i < a.Length; ++i) {
+						if (i > 0) { sb.Append(","); }
+						if (pretty) { sb.Append("\n" + Indent(depth + 1)); }
+						sb.Append(Stringify(a.GetValue(i), depth + 1, pretty));
+					}
+					if (pretty) { sb.Append("\n" + Indent(depth)); }
+				}
+				sb.Append("]");
+			} else if (fi.Length > 0) {
+				sb.Append("{");
+				for (int i = 0; i < fi.Length; ++i) {
+					if (i > 0) { sb.Append(","); }
+					if (pretty) { sb.Append("\n" + Indent(depth + 1)); }
+					sb.Append(fi[i].Name);
+					sb.Append(pretty?" : ":":");
+					sb.Append(Stringify(fi[i].GetValue(obj), depth + 1, pretty));
+				}
+				if (pretty) { sb.Append("\n" + Indent(depth)); }
+				sb.Append("}");
+			}
+			if(sb.Length == 0) { sb.Append(obj.ToString()); }
+			return sb.ToString();
 		}
 	}
 }

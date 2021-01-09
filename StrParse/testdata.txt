@@ -1,6 +1,6 @@
 ﻿{number:5 name:bruh, values{1,2
 ,3.456 7
 	}
-	text"oh m\x41i goodness"
+	text"oh\tm\x41i \ngoodness"
 	things{a:1,b:2}
 }
