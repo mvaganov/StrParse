@@ -1,4 +1,4 @@
-﻿{number:5 name:bruh, values{1,2
+﻿{number:5 "name":bruh, values{1,2
 ,3.456 7
 	}
 	text"oh\tm\x41i \ngoodness"

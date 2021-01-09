@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Text;
 
 namespace StrParse {
-	class CodeConvert {
+	public class CodeConvert {
 		public struct Err {
 			public int row, col;
 			public string message;
@@ -14,6 +14,7 @@ namespace StrParse {
 				message = m;
 			}
 			public override string ToString() { return "@"+row+","+col+	": " + message; }
+			public static Err None = default;
 		}
 		public static bool TryParse<T>(string text, out T data, List<Err> errors = null) {
 			object value = null;
@@ -24,7 +25,7 @@ namespace StrParse {
 		public static bool TryParse(Type type, string text, ref object data, List<Err> errors = null) {
 			List<Token> tokens = new List<Token>();
 			List<int> rows = new List<int>();
-			CodeParse.Tokens(text, tokens, indexOfNewRow: rows);
+			CodeParse.Tokens(text, tokens, rows: rows);
 			if (data == null) { data = GetNew(type); }
 			return TryParse(type, tokens, ref data, rows, errors);
 		}
@@ -76,7 +77,16 @@ namespace StrParse {
 				}
 				if (!isThisArrayType) {
 					if (typeToGet == null) {
-						string str = token.AsBasicToken;
+						string str = null;
+						Context.Entry e = token.ContextEntry;
+						if (e != null) {
+							if (e.IsText) {
+								str = e.Text;
+							}
+							tokenIndex += e.tokenCount;
+						} else {
+							str = token.AsBasicToken;
+						}
 						if (str == null) continue;
 						int index = Array.BinarySearch(fieldNames, str);
 						if (index < 0) {
@@ -138,51 +148,51 @@ namespace StrParse {
 		/// </summary>
 		/// <param name="typeToGet"></param>
 		/// <param name="tokens"></param>
-		/// <param name="i"></param>
+		/// <param name="tokenIndex"></param>
 		/// <param name="value">should have data in it. If value is pointing at tokens, the last read token is being ignored.</param>
 		/// <param name="errors"></param>
 		/// <param name="rows"></param>
 		/// <returns></returns>
-		public static bool TryGetValue(Type typeToGet, IList<Token> tokens, ref int i, out object value, List<Err> errors, IList<int> rows) {
+		public static bool TryGetValue(Type typeToGet, IList<Token> tokens, ref int tokenIndex, out object value, List<Err> errors, IList<int> rows) {
 			value = null;
-			object meta = tokens[i].meta;
+			Token token = tokens[tokenIndex];
+			object meta = token.meta;
 			switch (meta) {
 			case Delim delim:
 				switch (delim.text) {
 				// skip these delimiters as though they were whitespace.
 				case "=": case ":": case ",": break;
 				default:
-					if(errors!=null)errors.Add(new Err(tokens[i], rows, "unexpected delimiter \"" + delim.text + "\""));
+					if(errors!=null)errors.Add(new Err(token, rows, "unexpected delimiter \"" + delim.text + "\""));
 					return false;
 				}
 				value = tokens;
 				return true;
 			case Context.Entry context:
-				int indexAfterContext = context.IndexAfter(tokens, i);
+				int indexAfterContext = tokenIndex + context.tokenCount;
 				if (context.IsText) {
-					string text = context.Text;
-					value = CodeParse.Unescape(text.Substring(1, text.Length - 2));
-				} else if (!TryParse(typeToGet, tokens.GetRange(i, indexAfterContext - i), ref value, rows, errors)) {
+					value = context.Text;
+				} else if (!TryParse(typeToGet, tokens.GetRange(tokenIndex, indexAfterContext - tokenIndex), ref value, rows, errors)) {
 					return false;
 				}
-				i = indexAfterContext;
+				tokenIndex = indexAfterContext-1; // -1 because a for-loop increments tokenIndex right outside this method
 				return true;
 			case string s:
-				value = tokens[i].ToString(s);
+				value = token.ToString(s);
 				if (!TryConvert(ref value, typeToGet)) {
-					if(errors!=null)errors.Add(new Err(tokens[i], rows,"unable to convert " + value + " to " + typeToGet));
+					if(errors!=null)errors.Add(new Err(token, rows,"unable to convert " + value + " to " + typeToGet));
 					return false;
 				}
 				return true;
 			case TokenSubstitution sub:
 				value = sub.value;
 				if (!TryConvert(ref value, typeToGet)) {
-					if(errors!=null)errors.Add(new Err(tokens[i], rows,"unable to convert " + value + " to " + typeToGet));
+					if(errors!=null)errors.Add(new Err(token, rows,"unable to convert " + value + " to " + typeToGet));
 					return false;
 				}
 				return true;
 			default:
-				if(errors!=null)errors.Add(new Err(tokens[i], rows,"unable to parse token with meta data " + meta));
+				if(errors!=null)errors.Add(new Err(token, rows,"unable to parse token with meta data " + meta));
 				return false;
 			}
 		}
@@ -243,7 +253,7 @@ namespace StrParse {
 			FieldInfo[] fi = t.GetFields();
 			if(IsPrimitiveType(obj.GetType())) {
 				if (obj is string s) {
-					sb.Append("\"").Append(CodeParse.Escape(s)).Append("\"");
+					sb.Append("\"").Append(Escape(s)).Append("\"");
 				} else {
 					sb.Append(obj.ToString());
 				}
@@ -279,5 +289,67 @@ namespace StrParse {
 			if(sb.Length == 0) { sb.Append(obj.ToString()); }
 			return sb.ToString();
 		}
+
+		/// <summary>
+		/// converts a string from it's code to it's compiled form, with processed escape sequences
+		/// </summary>
+		/// <param name="str"></param>
+		/// <returns></returns>
+		// TODO use the actual parsing mechanisms...
+		public static string Unescape(string str) {
+			ParseResult parse;
+			StringBuilder sb = new StringBuilder();
+			int stringStarted = 0;
+			for (int i = 0; i < str.Length; ++i) {
+				char c = str[i];
+				if (c == '\\') {
+					sb.Append(str.Substring(stringStarted, i - stringStarted));
+					parse = Delim.UnescapeString(str, i);
+					if (parse.error != null) {
+						Console.ForegroundColor = ConsoleColor.Red;
+						Console.WriteLine("@" + i + ": " + parse.error);
+					}
+					if (parse.replacementValue != null) {
+						sb.Append(parse.replacementValue);
+					}
+					//Console.WriteLine("replacing " + str.Substring(i, parse.lengthParsed) + " with " + parse.replacementValue);
+					stringStarted = i + parse.lengthParsed;
+					i = stringStarted - 1;
+				}
+			}
+			sb.Append(str.Substring(stringStarted, str.Length - stringStarted));
+			return sb.ToString();
+		}
+
+		// TODO use the actual parsing mechanisms...
+		public static string Escape(string str) {
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < str.Length; ++i) {
+				char c = str[i];
+				switch (c) {
+				case '\a': sb.Append("\\a"); break;
+				case '\b': sb.Append("\\b"); break;
+				case '\n': sb.Append("\\n"); break;
+				case '\r': sb.Append("\\r"); break;
+				case '\f': sb.Append("\\f"); break;
+				case '\t': sb.Append("\\t"); break;
+				case '\v': sb.Append("\\v"); break;
+				case '\'': sb.Append("\\\'"); break;
+				case '\"': sb.Append("\\\""); break;
+				case '\\': sb.Append("\\\\"); break;
+				default:
+					if (c < 32 || (c > 127 && c < 512)) {
+						sb.Append("\\").Append(Convert.ToString((int)c, 8));
+					} else if (c >= 512) {
+						sb.Append("\\u").Append(((int)c).ToString("X4"));
+					} else {
+						sb.Append(c);
+					}
+					break;
+				}
+			}
+			return sb.ToString();
+		}
+
 	}
 }

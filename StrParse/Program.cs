@@ -23,7 +23,7 @@ namespace StrParse {
 			//IList<string> tokens = StringParse.Tokenize(text);
 			List<Token> tokens = new List<Token>();
 			List<int> rows = new List<int>();
-			CodeParse.Tokens(text, tokens, indexOfNewRow:rows);
+			CodeParse.Tokens(text, tokens, rows:rows);
 
 			List<CodeConvert.Err> errors = new List<CodeConvert.Err>();
 			bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
@@ -49,14 +49,18 @@ namespace StrParse {
 				Console.Write(i+"~ "+tokens[i].index+"@" + CodeParse.FilePositionOf(tokens[i],rows) + ": ");
 				if(tokens[i].meta is Context.Entry e) {
 					if (e.IsText || e.IsComment) {
-						Console.Write(e.Text);
-						i = e.IndexAfter(tokens, i);
+						Console.Write(e.TextRaw);
+						i += e.tokenCount-1;//e.IndexAfter(tokens, i);
 					} else {
 						Console.Write(tokens[i]);
 						Console.ForegroundColor = ConsoleColor.DarkGray;
-						Console.Write(" " + CodeParse.FilePositionOf(e.begin, rows) + " -> " + CodeParse.FilePositionOf(e.end, rows)+
+						Console.Write(" " + CodeParse.FilePositionOf(e.BeginToken, rows) + " -> " + CodeParse.FilePositionOf(e.EndToken, rows)+
 							" "+e.context.name+" depth:"+e.depth);
 					}
+					Console.ForegroundColor = ConsoleColor.DarkGray;
+					Console.Write(" " + e.tokenCount + "tokens ");
+					//for (int t = 0; t < e.tokenCount; ++t) { Console.Write("'" + tokens[t + e.tokenStart] + "' "); }
+
 				} else {
 					Console.Write(tokens[i]);
 				}
