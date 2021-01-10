@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using NonStandard;
 
 namespace StrParse {
 
@@ -12,7 +13,7 @@ namespace StrParse {
 		public struct TestData {
 			public string name, text;
 			public int number;
-			public float[] values;
+			public List<float> values;
 			public Things things;
 		}
 		static void Main(string[] args) {
@@ -23,9 +24,8 @@ namespace StrParse {
 			//IList<string> tokens = StringParse.Tokenize(text);
 			List<Token> tokens = new List<Token>();
 			List<int> rows = new List<int>();
-			CodeParse.Tokens(text, tokens, rows:rows);
-
 			List<CodeConvert.Err> errors = new List<CodeConvert.Err>();
+			CodeParse.Tokens(text, tokens, rows, errors);
 			bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
 			Console.WriteLine(testData.name);
 			Console.WriteLine(testData.number);

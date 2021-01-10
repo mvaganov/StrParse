@@ -4,7 +4,7 @@ using System.Text;
 using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
 
-namespace StrParse {
+namespace NonStandard {
 	public struct Token : IEquatable<Token>, IComparable<Token> {
 		public int index, length; // 32 bits x2
 		public object meta; // 64 bits
@@ -28,6 +28,16 @@ namespace StrParse {
 		public bool IsContextBeginning { get { if (meta is Context.Entry ctx) { return ctx.BeginToken == this; } return false; } }
 		public bool IsContextEnding { get { if (meta is Context.Entry ctx) { return ctx.EndToken == this; } return false; } }
 		public bool IsValid => index >= 0 && length >= 0;
+		public object Resolve() {
+			if (meta == null) throw new NullReferenceException();
+			switch (meta) {
+			case string s: return ToString(s);
+			case TokenSubstitution ss: return ss.value;
+			case Delim d: return d.text;
+			case Context.Entry pce: return pce.Resolve();
+			}
+			throw new DecoderFallbackException();
+		}
 		public bool Equals(Token other) { return index == other.index && length == other.length && meta == other.meta; }
 		public override bool Equals(object obj) { if (obj is Token t) return Equals(t); return false; }
 		public override int GetHashCode() { return meta.GetHashCode() ^ index ^ length; }
@@ -51,9 +61,12 @@ namespace StrParse {
 		/// <summary>
 		/// null unless there was an error processing this delimeter
 		/// </summary>
-		public string error;
-		public ParseResult(int length, object value, string err = null) { lengthParsed = length; replacementValue = value; error = err; }
-		public ParseResult AddToLength(int count) { lengthParsed += count; return this; }
+		public CodeConvert.Err error;
+		public bool IsError => !string.IsNullOrEmpty(error.message);
+		public ParseResult(int length, object value, string err = null, int r = 0, int c = 0) { 
+			lengthParsed = length; replacementValue = value; error = new CodeConvert.Err(r,c,err);
+		}
+		public ParseResult AddToLength(int count) { lengthParsed += count; error.col += count; return this; }
 	}
 	public struct TokenSubstitution { public string orig; public object value; 
 		public TokenSubstitution(string o, object v) { orig=o; value=v; } }
@@ -140,7 +153,7 @@ namespace StrParse {
 				while (frac + numFractionDigits < str.Length && 
 					IsValidNumber(str[frac + numFractionDigits], numberBase)) { numFractionDigits++; }
 				if(numFractionDigits == 0) {
-					pr.error = "decimal point with no subsequent digits";
+					pr.error = new CodeConvert.Err(0, index, "decimal point with no subsequent digits");
 				}
 				b = numberBase;
 				for (int i = 0; i < numFractionDigits; ++i) {
@@ -160,12 +173,15 @@ namespace StrParse {
 		public static ParseResult UnescapeString(string str, int index) {
 			ParseResult r = new ParseResult(0, null); // by default, nothing happened
 			if(str.Length <= index) {
-				r.error = "invalid arguments";
+				r.error = new CodeConvert.Err(0,0,"invalid arguments");
 				return r;
 			}
-			if (str[index] != '\\') { r.error = "expected escape sequence starting with '\\'"; return r; }
+			if (str[index] != '\\') {
+				r.error = new CodeConvert.Err(0, 0, "expected escape sequence starting with '\\'"); 
+				return r;
+			}
 			if (str.Length <= index + 1) {
-				r.error = "unable to parse escape sequence at end of string";
+				r.error = new CodeConvert.Err(0, 1, "unable to parse escape sequence at end of string");
 				return r;
 			}
 			char c = str[index + 1];
@@ -173,7 +189,7 @@ namespace StrParse {
 			case '\n': return new ParseResult(index + 2, "");
 			case '\r':
 				if (str.Length <= index + 2 || str[index + 2] != '\n') {
-					return new ParseResult(index, "", "expected windows line ending");
+					return new ParseResult(index, "", "expected windows line ending", 0, 2);
 				}
 				return new ParseResult(index + 3, "");
 			case 'a': return new ParseResult(2, "\a");
@@ -202,7 +218,7 @@ namespace StrParse {
 				return NumberParse(str, index + 1, digitCount, 8, false).AddToLength(1);
 			}
 			}
-			r.error = "unknown escape sequence";
+			r.error = new CodeConvert.Err(0, 1, "unknown escape sequence");
 			return r;
 		}
 
@@ -311,6 +327,7 @@ namespace StrParse {
 		public string name = "default";
 		public char[] whitespace = Delim.WhitespaceDefault;
 		public Delim[] delimiters = Delim.StandardDelimiters;
+		public Func<Entry, object> resolve;
 		public Context(string name) {
 			this.name = name;
 			allContexts[name] = this;
@@ -335,6 +352,10 @@ namespace StrParse {
 			public string sourceText;
 			public string TextRaw => sourceText.Substring(IndexBegin, Length);
 			public string Text => Unescape();
+			public object Resolve() {
+				if (context.resolve != null) return context.resolve(this);
+				return Unescape();
+			}
 			public bool IsText => context == String || context == Char;
 			public bool IsEnclosure => context == Expression || context == CodeBody || context == SquareBrace;
 			public bool IsComment => context == CommentLine || context == XmlCommentLine || context == CommentBlock;
@@ -370,8 +391,11 @@ namespace StrParse {
 		}
 	}
 	class CodeParse {
+		public static int Tokens(string str, List<Token> tokens, List<int> rows = null, List<CodeConvert.Err> errors = null) {
+			return Tokens(str, tokens, null, 0, rows, errors);
+		}
 		public static int Tokens(string str, List<Token> tokens, Context a_context = null, 
-			int index = 0, List<int> rows = null) {
+			int index = 0, List<int> rows = null, List<CodeConvert.Err> errors = null) {
 			if (a_context == null) a_context = Context.Default;
 			int tokenBegin = -1, tokenEnd = -1;
 			List<Context.Entry> contextStack = new List<Context.Entry>();
@@ -389,7 +413,10 @@ namespace StrParse {
 					}
 					if (delim.parseRule != null) {
 						ParseResult pr = delim.parseRule.Invoke(str, index);
-						// TODO if pr.error != null, add to an error output
+						if (pr.IsError && errors != null) {
+							pr.error.OffsetBy(delimToken, rows);
+							errors.Add(pr.error);
+						}
 						if (pr.replacementValue != null) {
 							delimToken.length = pr.lengthParsed;
 							delimToken.meta = new TokenSubstitution(str, pr.replacementValue);
@@ -446,6 +473,7 @@ namespace StrParse {
 			if(row < 0) { row = ~row; }
 			int rowStart = row > 0 ? indexOfNewRow[row - 1] : 0;
 			col = token.index - rowStart;
+			if (row == 0) ++col;
 		}
 		public static string FilePositionOf(Token token, IList<int> indexOfNewRow) {
 			FilePositionOf(token, indexOfNewRow, out int row, out int col);
