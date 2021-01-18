@@ -1,0 +1,35 @@
+﻿[ // this JSON-like script is a list of dialogs, which will be parsed and compiled by CodeConvert.TryParse
+{ } // empty dialog to start with
+{
+	name = "welcome",
+	options = [
+		{
+			=Dialog+Text
+			text = "Welcome to the NonStandard game"
+		}, {
+			=Dialog+Choice
+			text = "Hi. See ya around."
+			command = "done"
+		}, {
+			=Dialog+Choice
+			text = "what is this place?"
+			command = "dialog what"
+		}
+	]
+}, {
+	name = what
+	options [
+		{ =Text   text "a testing area for NonStandard code" }
+		{ =Choice text "oh ok"            command "done" },
+		{ =Choice text "more info please" command "dialog moreinfo" }
+	]
+},
+// a lot of structural syntax is optional, and the wildcard character '¤' can be used if enough identifying text is given
+{n¤ moreinfo o¤[{=T¤ t¤"no more info."}{=Ch¤ t¤ okthxbye c¤ done}{=Ch¤ t¤"please?"c¤"dialog welcome"}{=Co¤ c¤"++ counter"}
+{
+=Ch¤ 
+If((counter*1) >= (2¤(1+1)))
+t¤ exit c¤ exit
+}
+]}
+]

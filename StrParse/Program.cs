@@ -2,38 +2,49 @@
 using System.Collections.Generic;
 using System.Reflection;
 using NonStandard;
+using NonStandard.Data.Parse;
 
-namespace StrParse {
-
-
-	class Program {
-		public struct Things {
-			public int a, b;
+namespace NonStandard.Data {
+	public enum TextAnchor { Top, Bottom, Left, Right, UpperLeft, UpperRight, LowerLeft, LowerRight }
+	[Serializable] public class Dialog {
+		public string name;
+		public DialogOption[] options;
+		public abstract class DialogOption {
+			public string text;
+			public TextAnchor anchorText = TextAnchor.UpperLeft;
+			public Expression If; // conditional requirement for this option
 		}
+		[Serializable] public class Text : DialogOption { }
+		[Serializable] public class Choice : DialogOption { public string command; }
+		[Serializable] public class Command : DialogOption { public string command; }
+	}
+	class Program {
+		public struct Things { public int a, b; }
 		public struct TestData {
 			public string name, text;
 			public int number;
 			public List<float> values;
 			public Things things;
 		}
+
 		static void Main(string[] args) {
 			string filepath = 
 				//"../../../Program.cs";
-				"../../../testdata.txt";
+				//"../../../testdata.txt";
+				"../../../dialogs.txt";
 			string text = System.IO.File.ReadAllText(filepath);
 			//IList<string> tokens = StringParse.Tokenize(text);
 			List<Token> tokens = new List<Token>();
 			List<int> rows = new List<int>();
-			List<CodeConvert.Err> errors = new List<CodeConvert.Err>();
-			CodeParse.Tokens(text, tokens, rows, errors);
-			bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
-			Console.WriteLine(testData.name);
-			Console.WriteLine(testData.number);
-			Console.WriteLine(testData.text);
-			if (testData.values != null) { Console.WriteLine(string.Join(", ", testData.values)); }
-			Console.WriteLine(testData.things.a);
-			Console.WriteLine(testData.things.b);
-			Console.WriteLine(CodeConvert.Stringify(testData, 0, true));
+			List<ParseError> errors = new List<ParseError>();
+			//Dictionary<string, float> dict;
+			//CodeConvert.TryParse(text, out dict, errors);
+			//Show.Log(Show.Stringify(dict, true));
+			//errors.ForEach(e => Show.Log(e.ToString()));
+			//Tokenizer.Tokenize(text, tokens, rows, errors);
+			//bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
+			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, errors);
+			Console.WriteLine(Show.Stringify(testData, true));
 			if (!parsed) {
 				for(int i = 0; i < errors.Count; ++i) {
 					Console.WriteLine(errors[i]);
@@ -46,7 +57,7 @@ namespace StrParse {
 			} Console.WriteLine();
 			for (int i = 0; i < tokens.Count; ++i) {
 				Console.ForegroundColor = ((i % 2) == 0) ? ConsoleColor.White : ConsoleColor.Green;
-				Console.Write(i+"~ "+tokens[i].index+"@" + CodeParse.FilePositionOf(tokens[i],rows) + ": ");
+				Console.Write(i+"~ "+tokens[i].index+"@" + ParseError.FilePositionOf(tokens[i],rows) + ": ");
 				if(tokens[i].meta is Context.Entry e) {
 					if (e.IsText || e.IsComment) {
 						Console.Write(e.TextRaw);
@@ -54,7 +65,7 @@ namespace StrParse {
 					} else {
 						Console.Write(tokens[i]);
 						Console.ForegroundColor = ConsoleColor.DarkGray;
-						Console.Write(" " + CodeParse.FilePositionOf(e.BeginToken, rows) + " -> " + CodeParse.FilePositionOf(e.EndToken, rows)+
+						Console.Write(" " + ParseError.FilePositionOf(e.BeginToken, rows) + " -> " + ParseError.FilePositionOf(e.EndToken, rows)+
 							" "+e.context.name+" depth:"+e.depth);
 					}
 					Console.ForegroundColor = ConsoleColor.DarkGray;
