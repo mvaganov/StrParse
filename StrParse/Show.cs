@@ -45,8 +45,10 @@ namespace NonStandard {
 		/// <param name="includeType">include "=TypeName" if there could be ambiguity because of inheritance</param>
 		/// <param name="depth"></param>
 		/// <param name="recursionStack">used to prevent recursion stack overflows</param>
+		/// <param name="filter">object0 is the object, object1 is the member, object2 is the value. if it returns null, print as usual. if returns "", skip print.</param>
 		/// <returns></returns>
-		public static string Stringify(object obj, bool pretty = false, bool includeType = true, int depth = 0, List<object> recursionStack = null) {
+		public static string Stringify(object obj, bool pretty = false, bool includeType = true, int depth = 0, 
+			List<object> recursionStack = null, Func<object,object,object,string> filter = null) {
 			if (obj == null) return "null";
 			Type t = obj.GetType();
 			StringBuilder sb = new StringBuilder();
@@ -80,19 +82,16 @@ namespace NonStandard {
 				}
 				IList list = obj as IList;
 
-				if (iListElement != null && iListElement.IsPrimitive) {
-					for (int i = 0; i < list.Count; ++i) {
-						if (i > 0) { sb.Append(","); if (pretty) sb.Append(" "); }
+				for (int i = 0; i < list.Count; ++i) {
+					if (i > 0) { sb.Append(","); }
+					if (pretty && !iListElement.IsPrimitive) { sb.Append("\n" + Indent(depth + 1)); }
+					if (filter == null) {
 						sb.Append(Stringify(list[i], pretty, includeType, depth + 1, recursionStack));
+					} else {
+						FilterElement(sb, obj, i, list[i], pretty, includeType, true, depth, recursionStack, filter);
 					}
-				} else {
-					for (int i = 0; i < list.Count; ++i) {
-						if (i > 0) { sb.Append(","); }
-						if (pretty) { sb.Append("\n" + Indent(depth + 1)); }
-						sb.Append(Stringify(list[i], pretty, includeType, depth + 1, recursionStack));
-					}
-					if (pretty) { sb.Append("\n" + Indent(depth)); }
 				}
+				if (pretty) { sb.Append("\n" + Indent(depth)); }
 				sb.Append("]");
 			} else {
 				bool isDict = t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Dictionary<,>);
@@ -106,9 +105,12 @@ namespace NonStandard {
 					for (int i = 0; i < fi.Length; ++i) {
 						if (i > 0 || showTypeHere) { sb.Append(","); }
 						if (pretty) { sb.Append("\n" + Indent(depth + 1)); }
-						sb.Append(fi[i].Name);
-						sb.Append(pretty ? " : " : ":");
-						sb.Append(Stringify(fi[i].GetValue(obj), pretty, includeType, depth + 1, recursionStack));
+						if (filter == null) {
+							sb.Append(fi[i].Name).Append(pretty ? " : " : ":");
+							sb.Append(Stringify(fi[i].GetValue(obj), pretty, includeType, depth + 1, recursionStack));
+						} else {
+							FilterElement(sb, obj, fi[i].Name, fi[i].GetValue(obj), pretty, includeType, false, depth, recursionStack, filter);
+						}
 					}
 				} else {
 					MethodInfo getEnum = t.GetMethod("GetEnumerator", new Type[] { });
@@ -124,10 +126,13 @@ namespace NonStandard {
 						if (pretty) { sb.Append("\n" + Indent(depth + 1)); }
 						object k = getKey.Invoke(o, noparams);
 						object v = getVal.Invoke(o, noparams);
-						sb.Append(k);
-						sb.Append(pretty ? " : " : ":");
-						sb.Append(Stringify(v, pretty, includeType, depth + 1, recursionStack));
-						somethingPrinted = true;
+						if (filter == null) {
+							sb.Append(k).Append(pretty ? " : " : ":");
+							sb.Append(Stringify(v, pretty, includeType, depth + 1, recursionStack));
+							somethingPrinted = true;
+						} else {
+							somethingPrinted = FilterElement(sb, obj, k, v, pretty, includeType, false, depth, recursionStack, filter);
+						}
 					}
 				}
 				if (pretty) { sb.Append("\n" + Indent(depth)); }
@@ -135,6 +140,23 @@ namespace NonStandard {
 			}
 			if (sb.Length == 0) { sb.Append(obj.ToString()); }
 			return sb.ToString();
+		}
+
+		private static bool FilterElement(StringBuilder sb, object obj, object key, object val, 
+			bool pretty, bool includeType, bool isArray, int depth, List<object> recursionStack,
+			Func<object, object, object, string> filter = null) {
+			bool unfiltered = true;
+			if (filter != null) {
+				string result = filter.Invoke(obj, key, val);
+				unfiltered = result == null;
+				if (!unfiltered && result.Length != 0) { sb.Append(result); return true; }
+			}
+			if (unfiltered) {
+				if (!isArray) { sb.Append(key).Append(pretty ? " : " : ":"); }
+				sb.Append(Stringify(val, pretty, includeType, depth + 1, recursionStack));
+				return true;
+			}
+			return false;
 		}
 
 		/// <summary>

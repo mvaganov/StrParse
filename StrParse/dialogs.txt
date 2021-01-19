@@ -1,6 +1,6 @@
 ﻿[ // this JSON-like script is a list of dialogs, which will be parsed and compiled by CodeConvert.TryParse
 { } // empty dialog to start with
-{
+{ // called by our first NPC
 	name = "welcome",
 	options = [
 		{
@@ -12,8 +12,8 @@
 			command = "done"
 		}, {
 			=Dialog+Choice
-			text = "what is this place?"
-			command = "dialog what"
+			text = "What is this place?"
+			command = "dialog what" // a command with a parameter, like in a command-line terminal
 		}
 	]
 }, {
@@ -28,7 +28,7 @@
 {n¤ moreinfo o¤[{=T¤ t¤"no more info."}{=Ch¤ t¤ okthxbye c¤ done}{=Ch¤ t¤"please?"c¤"dialog welcome"}{=Co¤ c¤"++ counter"}
 {
 =Ch¤ 
-If((counter*1) >= (2¤(1+1)))
+If((counter*1) >= (2*(1+1)))
 t¤ exit c¤ exit
 }
 ]}

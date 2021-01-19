@@ -20,6 +20,7 @@ namespace NonStandard.Data {
 			List<Token> tokens = new List<Token>();
 			List<int> rows = new List<int>();
 			Tokenizer.Tokenize(text, tokens, rows, errors);
+			//Show.Log(tokens.DebugPrint());
 			return TryParse(type, tokens, ref data, rows, errors);
 		}
 		public static bool TryParse(Type type, IList<Token> tokens, ref object data, IList<int> rows, List<ParseError> errors = null) {

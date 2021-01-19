@@ -3,20 +3,26 @@ using System.Collections.Generic;
 using System.Text;
 
 namespace NonStandard.Data.Parse {
-	public class Tokenizer {
+	public static class Tokenizer {
 		public static int Tokenize(string str, List<Token> tokens, List<int> rows = null, List<ParseError> errors = null) {
 			return Tokenize(str, tokens, null, 0, rows, errors);
 		}
-		public static string DebugPrint(IList<Token> tokens, int depth = 0) {
+		public static string DebugPrint(this IList<Token> tokens, int depth = -1) {
 			StringBuilder sb = new StringBuilder();
+			string indent = "  ";
 			for(int i = 0; i < tokens.Count; ++i) {
 				Token t = tokens[i];
 				Context.Entry e = t.AsContextEntry;
 				if (e != null) {
 					if (e.tokens != tokens) {
-						sb.Append("\n").Append(Show.Indent(depth + 1)).
-							Append(DebugPrint(e.tokens, depth + 1)).
-							Append("\n").Append(Show.Indent(depth));
+						Context.Entry prevEntry = i > 0 ? tokens[i - 1].AsContextEntry : null;
+						if (prevEntry != null && prevEntry.tokens != tokens) {
+							sb.Append(indent);
+						} else {
+							sb.Append("\n").Append(Show.Indent(depth + 1, indent));
+						}
+						sb.Append(DebugPrint(e.tokens, depth + 1)).
+							Append("\n").Append(Show.Indent(depth, indent));
 					} else {
 						if (i == 0) { sb.Append(e.startDelim); }
 						else if (i == tokens.Count-1) { sb.Append(e.endDelim); }
@@ -49,7 +55,6 @@ namespace NonStandard.Data.Parse {
 			}
 			FinishToken(str, tokens, index, ref tokenBegin, ref tokenEnd); // add the last token that was still being processed
 			FinalTokenCleanup(tokens, rows, errors);
-			Show.Log(DebugPrint(tokens));
 			return index;
 		}
 

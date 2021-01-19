@@ -73,6 +73,7 @@ namespace NonStandard.Data.Parse {
 			public Delim startDelim, endDelim;
 			public int depth { get { Entry p = parent; int n = 0; while (p != null) { p = p.parent; ++n; } return n; } }
 			public object sourceMeta;
+			public readonly static Entry None = new Entry();
 			public string TextRaw { 
 				get {
 					Entry e = this; string str;

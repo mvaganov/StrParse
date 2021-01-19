@@ -6,6 +6,8 @@ using System.Text;
 
 namespace NonStandard.Data.Parse {
 	public class Parser {
+		/// used by wildcard searches, for member names and enums
+		public const char defaultWildcard = '¤';
 		/// current data being parsed
 		object memberValue = null;
 		/// the object being parsed into, the final result
@@ -15,7 +17,11 @@ namespace NonStandard.Data.Parse {
 		/// the type that the next value needs to be
 		Type memberType = null;
 		// parse state
-		public class ParseState { public int tokenIndex = 0; public IList<Token> tokens; }
+		public class ParseState {
+			public int tokenIndex = 0;
+			public IList<Token> tokens;
+			public Token GetToken() { return tokens[tokenIndex]; }
+		}
 		List<ParseState> state = new List<ParseState>();
 		IList<int> rows;
 		List<ParseError> errors = null;
@@ -38,9 +44,26 @@ namespace NonStandard.Data.Parse {
 			state.Add(new ParseState { tokens = tokenList, tokenIndex = index });
 		}
 
-		// TODO MoveNext(), which should handle context switching, and skip comments as well (see FindInternalType)
-		// TODO IsDone()
-		// TODO create an enumerator that does the traversal.
+		public bool Increment() {
+			if (state.Count <= 0) return false;
+			ParseState pstate = state[state.Count-1];
+			++pstate.tokenIndex;
+			while (pstate.tokenIndex >= pstate.tokens.Count) {
+				PopParseState();
+				if (state.Count <= 0) return false;
+				pstate = state[state.Count - 1];
+				++pstate.tokenIndex;
+			}
+			return true;
+		}
+		public bool SkipComments(bool incrementAtLeastOnce = false) {
+			Context.Entry e = incrementAtLeastOnce ? Context.Entry.None : null;
+			do {
+				if (e != null && !Increment()) return false;
+				e = Current.GetToken().AsContextEntry;
+			} while (e != null && e.IsComment);
+			return true;
+		}
 
 		public void PopParseState() { if (state.Count > 0) { state.RemoveAt(state.Count - 1); } }
 		public void SetResultType(Type type) {
@@ -51,6 +74,21 @@ namespace NonStandard.Data.Parse {
 			Array.Sort(props, (a, b) => a.Name.CompareTo(b.Name));
 			fieldNames = Array.ConvertAll(fields, f => f.Name);
 			propNames = Array.ConvertAll(props, p => p.Name);
+		}
+		public Type SetResultType(string typeName) {
+			Type t = Type.GetType(typeName);
+			if (t == null) {
+				Type[] childTypes = resultType.GetSubClasses();
+				string[] typeNames = Array.ConvertAll(childTypes, ty => ty.ToString());
+				string nameSearch = !typeName.StartsWith(Parser.defaultWildcard) ? Parser.defaultWildcard + typeName : typeName;
+				int index = FindIndexWithWildcard(typeNames, nameSearch, false);
+				if (index >= 0) { t = childTypes[index]; }
+			}
+			if (result == null || result.GetType() != t && t != null) {
+				SetResultType(t);
+				result = resultType.GetNewInstance();
+			}
+			return t;
 		}
 		public void Init(Type type, IList<Token> a_tokens, object dataStructure, IList<int> rows, List<ParseError> errors) {
 			resultType = type;
@@ -89,53 +127,27 @@ namespace NonStandard.Data.Parse {
 		private Type FindInternalType() {
 			if (Current.tokenIndex >= Current.tokens.Count) return null;
 			Token token; Context.Entry e;
-
+			if (!SkipComments()) { return null; }
 			token = Current.tokens[Current.tokenIndex];
 			e = token.AsContextEntry;
-			while (e != null && e.IsComment) {
-				++Current.tokenIndex;
-				token = Current.tokens[Current.tokenIndex];
-				e = token.AsContextEntry;
-			}
 
 			if (e != null && token.IsContextBeginning) {
-				++Current.tokenIndex;
+				Increment();
 				AddParseState(e.tokens);
-				++Current.tokenIndex;
-
-				token = Current.tokens[Current.tokenIndex];
-				e = token.AsContextEntry;
-				while (e != null && e.IsComment) {
-					++Current.tokenIndex;
-					token = Current.tokens[Current.tokenIndex];
-					e = token.AsContextEntry;
-				}
+				SkipComments(true);
+				token = Current.GetToken();
 			}
 			Delim d = token.AsDelimiter;
 			if (d != null) {
 				if (d.text == "=" || d.text == ":") {
-					++Current.tokenIndex;
+					SkipComments(true);
 					memberType = typeof(string);
 					if (!TryGetValue()) { return null; }
 					memberType = null;
-					++Current.tokenIndex;
+					SkipComments(true);
 					string typeName = memberValue.ToString();
-					Type t = Type.GetType(typeName);
-					if (t == null) {
-						Type[] childTypes = resultType.GetSubClasses();
-						string[] typeNames = Array.ConvertAll(childTypes, ty => ty.ToString());
-						string nameSearch = !typeName.StartsWith(Parser.defaultWildcard) ? Parser.defaultWildcard + typeName : typeName;
-						int index = FindIndexWithWildcard(typeNames, nameSearch, false);
-						if (index >= 0) { t = childTypes[index]; }
-					}
-					if (result == null || result.GetType() != t) {
-						if (t != null) {
-							SetResultType(t);
-							result = resultType.GetNewInstance();
-						} else {
-							if (errors != null) errors.Add(new ParseError(token, rows, "unknown type " + typeName));
-						}
-					}
+					Type t = SetResultType(typeName);
+					if(t == null && errors != null) { errors.Add(new ParseError(token, rows, "unknown type " + typeName)); }
 					return t;
 				} else {
 					if (errors != null) errors.Add(new ParseError(token, rows, "unexpected beginning token " + d.text));
@@ -146,25 +158,9 @@ namespace NonStandard.Data.Parse {
 
 		public bool TryParse() {
 			FindInternalType(); // first, check if this has a more correct internal type
-			int counter = 0;
 			while(state.Count > 0 && Current.tokenIndex < Current.tokens.Count) {
-				if(counter++ > 100) { throw new Exception("infinite loop?"); }
-				Token token = Current.tokens[Current.tokenIndex];
-				Context.Entry e = token.AsContextEntry;
-				// skip comments
-				if (e != null && (e.context == CodeRules.CommentLine || e.context == CodeRules.CommentBlock || e.context == CodeRules.XmlCommentLine)) {
-					//Show.Log("skipping comment "+(e.tokens == Current.tokens));
-					if (e.tokens == Current.tokens) {
-						Current.tokenIndex += e.tokenCount;
-					} else {
-						++Current.tokenIndex;
-					}
-					while (state.Count > 0 && Current.tokenIndex >= Current.tokens.Count) { // TODO while(Current.IsDone) {
-						PopParseState();
-						if (state.Count > 0) { ++Current.tokenIndex; } // TODO MoveNext()
-					}
-					continue;
-				}
+				SkipComments();
+				Token token = Current.GetToken();
 				// flag errors for complicated text when a primitive is expected TODO expressions.
 				if (token.IsContextBeginning && !token.AsContextEntry.IsText) {
 					if (memberType != null && isVarPrimitiveType) {
@@ -173,7 +169,7 @@ namespace NonStandard.Data.Parse {
 					}
 				}
 				if (token.IsContextEnding) {
-					Show.Log("breaking at "+Current.tokenIndex);
+					//Show.Log("breaking at "+Current.tokenIndex);
 					break;
 				} // assume any unexpected context ending belongs to this context
 				if (!isList) {
@@ -185,27 +181,27 @@ namespace NonStandard.Data.Parse {
 					}
 					// how to parse non-lists: find what member is being assigned, get the value to assign, assign it.
 					if (!memberToken.IsValid) {
-						//Show.Log("trying to get memberToken @" + Current.tokenIndex);
 						if (!GetMemberNameAndAssociatedType()) {
 							//Show.Log("fail membername");
 							return false; }
 						if (memberValue == state) {
 							//Show.Log("skipping token during memberName search");
 							memberValue = null;
-							++Current.tokenIndex;
-							continue; }
-						Show.Log("memberToken: "+memberToken+" @"+Current.tokenIndex);
+							SkipComments(true);
+							continue;
+						}
+						//Show.Log("memberToken: "+memberToken+" @"+Current.tokenIndex);
 					} else {
-						Show.Log("trying to get memberValue @" + Current.tokenIndex);
+						//Show.Log("trying to get memberValue @" + Current.tokenIndex);
 						if (!TryGetValue()) {
 							//Show.Log("fail value");
 							return false;
 						}
 						if (memberValue == state) {
-							//Show.Log("skipping token during memberValue search");
-							++Current.tokenIndex;
-							continue; } // this is how TryGetValue communicates value ignore
-						Show.Log("memberValue: "+memberValue+" @"+Current.tokenIndex);
+							SkipComments(true);
+							continue;
+						} // this is how TryGetValue communicates value ignore
+						//Show.Log("memberValue: "+memberValue+" @"+Current.tokenIndex);
 						if (dictionaryAdd != null) {
 							object key = memberToken.Resolve();
 							if (!memberType.IsAssignableFrom(memberValue.GetType())) {
@@ -225,15 +221,12 @@ namespace NonStandard.Data.Parse {
 				} else {
 					if (!TryGetValue()) { return false; }
 					if (memberValue == state) {
-						++Current.tokenIndex;
-						continue; }
+						SkipComments(true);
+						continue;
+					}
 					listData.Add(memberValue);
 				}
-				++Current.tokenIndex;
-				while(state.Count > 0 && Current.tokenIndex >= Current.tokens.Count) { // TODO while(Current.IsDone) {
-					PopParseState();
-					if (state.Count > 0) { ++Current.tokenIndex; } // TODO MoveNext()
-				}
+				SkipComments(true);
 			}
 			if (isList) {
 				if (resultType.IsArray) {
@@ -250,7 +243,7 @@ namespace NonStandard.Data.Parse {
 		}
 
 		public bool GetMemberNameAndAssociatedType() {
-			memberToken = Current.tokens[Current.tokenIndex];
+			memberToken = Current.GetToken();
 			string str = null;
 			Context.Entry e = memberToken.AsContextEntry;
 			if (e != null) {
@@ -307,7 +300,7 @@ namespace NonStandard.Data.Parse {
 		}
 		public bool TryGetValue() {
 			memberValue = null;
-			Token token = Current.tokens[Current.tokenIndex];
+			Token token = Current.GetToken();
 			object meta = token.meta;
 			Delim delim = meta as Delim;
 			if (delim != null) {
@@ -328,8 +321,9 @@ namespace NonStandard.Data.Parse {
 				if (context.IsText) {
 					memberValue = context.Text;
 				} else {
+					int index = Current.tokenIndex;
 					IList<Token> parseNext = subContextUsingSameList
-							? Current.tokens.GetRange(Current.tokenIndex, indexAfterContext - Current.tokenIndex)
+							? Current.tokens.GetRange(index, indexAfterContext - index)
 							: context.tokens;
 					if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, rows, errors)) {
 						return false;
@@ -360,7 +354,6 @@ namespace NonStandard.Data.Parse {
 			return false;
 		}
 
-		public const char defaultWildcard = '¤';
 		public static int FindIndexWithWildcard(string[] names, string name, bool isSorted, char wildcard = defaultWildcard) {
 			if (name.Length == 1 && name[0] == wildcard) return 0;
 			bool startsWith = name.EndsWith(wildcard), endsWith = name.StartsWith(wildcard);
