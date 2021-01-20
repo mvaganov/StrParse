@@ -70,7 +70,7 @@ namespace NonStandard.Data.Parse {
 			}
 			FinishToken(index, ref tokenBegin); // add the last token that was still being processed
 			FinalTokenCleanup();
-			//ApplyOperators();
+			ApplyOperators();
 			return index;
 		}
 
@@ -152,7 +152,6 @@ namespace NonStandard.Data.Parse {
 				IList<Token> currentTokens = path[path.Count - 1];
 				int currentIndex = position[position.Count - 1];
 				Token token = currentTokens[currentIndex];
-				Console.Write(token.AsSmallText+"@"+token.index+" ");
 				Context.Entry e = token.AsContextEntry;
 				bool incremented = false;
 				if(e != null) {
@@ -162,8 +161,6 @@ namespace NonStandard.Data.Parse {
 						currentIndex = position[position.Count - 1];
 						currentTokens = path[path.Count - 1];
 						incremented = true;
-					} else {
-						Console.Write(".");
 					}
 				} else {
 					DelimOp op = token.meta as DelimOp;
@@ -173,19 +170,31 @@ namespace NonStandard.Data.Parse {
 				}
 				if (!incremented) {
 					do {
-						++currentIndex;
+						position[position.Count - 1] = ++currentIndex;
 						if (currentIndex >= currentTokens.Count) {
 							position.RemoveAt(position.Count - 1);
 							path.RemoveAt(path.Count - 1);
 							if (position.Count <= 0) break;
-							currentIndex = position[position.Count - 1] + 1;
+							currentIndex = position[position.Count - 1];
+							position[position.Count - 1] = ++currentIndex;
 							currentTokens = path[path.Count - 1];
 						}
 					} while (currentIndex >= currentTokens.Count);
 				}
 				if (position.Count <= 0) break;
 			}
-			Console.WriteLine(foundOperators.Join("\n", arr => arr.Join(", "))); ;
+			Console.WriteLine(foundOperators.Join("\n", arr => {
+				Token t = GetTokenAt(tokens, arr);
+				return arr.Join(", ") + ":" + t + " @" + ParseError.FilePositionOf(t, rows);
+			})); ;
+		}
+		Token GetTokenAt(IList<Token> path, IList<int> index) {
+			int i = index[0];
+			Token t = path[i];
+			if (index.Count == 1) return t;
+			index = index.GetRange(1, index.Count - 1);
+			Context.Entry e = t.AsContextEntry;
+			return GetTokenAt(e.tokens, index);
 		}
 		public void ExtractContextAsSubTokenList(Context.Entry entry) {
 			if(entry.tokenCount <= 0) { throw new Exception("what just happened?"); }
