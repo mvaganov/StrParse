@@ -4,14 +4,14 @@
 	name = "welcome",
 	options = [
 		{
-			=Dialog+Text
+			='Dialog+Text'
 			text = "Welcome to the NonStandard game"
 		}, {
-			=Dialog+Choice
+			='Dialog+Choice'
 			text = "Hi. See ya around."
 			command = "done"
 		}, {
-			=Dialog+Choice
+			='Dialog+Choice'
 			text = "What is this place?"
 			command = "dialog what" // a command with a parameter, like in a command-line terminal
 		}

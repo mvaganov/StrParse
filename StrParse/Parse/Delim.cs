@@ -24,14 +24,16 @@ namespace NonStandard.Data.Parse {
 		}
 	}
 	public class DelimOp : Delim {
-		public Func<List<Token>, int, Context.Entry> isSyntaxValid = null;
-		public Func<List<Token>, int, object, object> resolve = null;
+		public int order;
+		public Func<List<Token>, Tokenizer, int, Context.Entry> isSyntaxValid = null;
+		public Func<List<Token>, Tokenizer, int, object, object> resolve = null;
 		public DelimOp(string delim, string name = null, string desc = null,
 			Func<string, int, ParseResult> parseRule = null,
-			Func<string, int, bool> addReq = null, Func<List<Token>, int, Context.Entry> syntax = null,
-			Func<List<Token>, int, object, object> resolve = null)
+			Func<string, int, bool> addReq = null, int order = 100,
+			Func<List<Token>, Tokenizer, int, Context.Entry> syntax = null,
+			Func<List<Token>, Tokenizer, int, object, object> resolve = null)
 			: base(delim, name, desc, parseRule, addReq) {
-			isSyntaxValid = syntax; this.resolve = resolve;
+			this.order = order; isSyntaxValid = syntax; this.resolve = resolve;
 		}
 	}
 	public class Delim : IComparable<Delim> {

@@ -70,7 +70,7 @@ namespace NonStandard.Data.Parse {
 			public Entry parent = null;
 			public IList<Token> tokens;
 			public int tokenStart, tokenCount = -1;
-			public Delim startDelim, endDelim;
+			public Delim beginDelim, endDelim;
 			public int depth { get { Entry p = parent; int n = 0; while (p != null) { p = p.parent; ++n; } return n; } }
 			public object sourceMeta;
 			public readonly static Entry None = new Entry();
@@ -108,6 +108,18 @@ namespace NonStandard.Data.Parse {
 			//	while (index + 1 < tokens.Count && tokens[index + 1].index < endIndex) { ++index; }
 			//	return index;
 			//}
+			public void RemoveTokenRange(int index, int count) {
+				if (count <= 0) return;
+				List<Token> tok = tokens as List<Token>;
+				if (tok != null) { tok.RemoveRange(index, count); }
+				else {
+					Token[] tArr = new Token[tokens.Count-count];
+					int end = index + count, length = tokens.Count - end;
+					for (int i = 0; i < index; ++i) { tArr[i] = tokens[i]; }
+					for (int i = 0; i < length; ++i) { tArr[index + i] = tokens[end + i]; }
+					tokens = tArr;
+				}
+			}
 		}
 		public Entry GetEntry(IList<Token> tokens, int startTokenIndex, object meta, Context.Entry parent = null) {
 			Entry e = new Entry { context = this, tokens = tokens, tokenStart = startTokenIndex, sourceMeta = meta, parent = parent };

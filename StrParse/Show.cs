@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 #if UNITY_5_3_OR_NEWER
@@ -217,6 +218,32 @@ namespace NonStandard {
 					}
 					break;
 				}
+			}
+			return sb.ToString();
+		}
+
+		public static IList<string> GetStackFullPath(int stackDepth = 1, int stackStart = 1) {
+			StackTrace stackTrace = new StackTrace(stackStart+1, true);
+			int len = Math.Min(stackDepth, stackTrace.FrameCount);
+			List<string> stack = new List<string>();
+			for (int i = 0; i < len; ++i) {
+				StackFrame f = stackTrace.GetFrame(i);
+				if (f == null) break;
+				string path = f.GetFileName();
+				if (path == null) break;
+				stack.Add(path+":"+f.GetFileLineNumber());
+			}
+			return stack;
+		}
+		public static string GetStack(int stackDepth = 1, int stackStart = 1) {
+			StringBuilder sb = new StringBuilder();
+			IList<string> stack = GetStackFullPath(stackDepth, stackStart);
+			for(int i = 0; i < stack.Count; ++i) {
+				string path = stack[i];
+				int fileStart = path.LastIndexOf(System.IO.Path.DirectorySeparatorChar);
+				if (fileStart < 0) fileStart = path.LastIndexOf(System.IO.Path.AltDirectorySeparatorChar);
+				if (sb.Length > 0) sb.Append(", ");
+				sb.Append(path.Substring(fileStart + 1));
 			}
 			return sb.ToString();
 		}

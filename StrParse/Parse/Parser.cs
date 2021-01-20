@@ -23,8 +23,7 @@ namespace NonStandard.Data.Parse {
 			public Token GetToken() { return tokens[tokenIndex]; }
 		}
 		List<ParseState> state = new List<ParseState>();
-		IList<int> rows;
-		List<ParseError> errors = null;
+		Tokenizer tok;
 		bool isVarPrimitiveType = false, isList; // can these be designed out?
 		Token memberToken; // for objects and dictionaries
  		// for parsing an object
@@ -84,18 +83,17 @@ namespace NonStandard.Data.Parse {
 				int index = FindIndexWithWildcard(typeNames, nameSearch, false);
 				if (index >= 0) { t = childTypes[index]; }
 			}
-			if (result == null || result.GetType() != t && t != null) {
+			if (t != null && (result == null || result.GetType() != t)) {
 				SetResultType(t);
 				result = resultType.GetNewInstance();
 			}
 			return t;
 		}
-		public void Init(Type type, IList<Token> a_tokens, object dataStructure, IList<int> rows, List<ParseError> errors) {
+		public void Init(Type type, IList<Token> tokens, object dataStructure, Tokenizer tokenizer) {
 			resultType = type;
-			AddParseState(a_tokens);//tokens = a_tokens;
+			tok = tokenizer;
+			AddParseState(tokens);//tokens = a_tokens;
 			result = dataStructure;
-			this.rows = rows;
-			this.errors = errors;
 			SetResultType(type);
 			memberType = null;
 			isVarPrimitiveType = false;
@@ -114,7 +112,7 @@ namespace NonStandard.Data.Parse {
 					if (result == null && !resultType.IsAbstract) { result = type.GetNewInstance(); }
 				} catch (Exception e) {
 					throw new Exception("failed to create " + type + " at " +
-						ParseError.FilePositionOf(Current.tokens[0], rows) + "\n" + e.ToString());
+						ParseError.FilePositionOf(Current.tokens[0], tok.rows) + "\n" + e.ToString());
 				}
 				dictionaryTypes = type.GetIDictionaryType();
 				if (dictionaryTypes.Value != null) {
@@ -147,10 +145,10 @@ namespace NonStandard.Data.Parse {
 					SkipComments(true);
 					string typeName = memberValue.ToString();
 					Type t = SetResultType(typeName);
-					if(t == null && errors != null) { errors.Add(new ParseError(token, rows, "unknown type " + typeName)); }
+					if(t == null) { tok.AddError(token, "unknown type " + typeName); }
 					return t;
 				} else {
-					if (errors != null) errors.Add(new ParseError(token, rows, "unexpected beginning token " + d.text));
+					tok.AddError(token, "unexpected beginning token " + d.text);
 				}
 			}
 			return null;
@@ -158,13 +156,16 @@ namespace NonStandard.Data.Parse {
 
 		public bool TryParse() {
 			FindInternalType(); // first, check if this has a more correct internal type
+			if(resultType == typeof(Expression)) {
+				Show.Log(Tokenizer.DebugPrint(Current.tokens));
+			}
 			while(state.Count > 0 && Current.tokenIndex < Current.tokens.Count) {
 				SkipComments();
 				Token token = Current.GetToken();
 				// flag errors for complicated text when a primitive is expected TODO expressions.
 				if (token.IsContextBeginning && !token.AsContextEntry.IsText) {
 					if (memberType != null && isVarPrimitiveType) {
-						if (errors != null) errors.Add(new ParseError(token, rows, "unexpected beginning of " + token.AsContextEntry.context.name));
+						tok.AddError(token, "unexpected beginning of " + token.AsContextEntry.context.name);
 						return false;
 					}
 				}
@@ -174,9 +175,7 @@ namespace NonStandard.Data.Parse {
 				} // assume any unexpected context ending belongs to this context
 				if (!isList) {
 					if(result == null) {
-						if (errors != null) {
-							errors.Add(new ParseError(token, rows, resultType + " needs more specific, eg: "+ resultType.GetSubClasses().Join(", ")));
-						}
+						tok.AddError(token, resultType + " needs more specific, eg: "+ resultType.GetSubClasses().Join(", "));
 						return false;
 					}
 					// how to parse non-lists: find what member is being assigned, get the value to assign, assign it.
@@ -205,7 +204,7 @@ namespace NonStandard.Data.Parse {
 						if (dictionaryAdd != null) {
 							object key = memberToken.Resolve();
 							if (!memberType.IsAssignableFrom(memberValue.GetType())) {
-								if (errors != null) errors.Add(new ParseError(token, rows, "unable to convert element \"" + key + "\" value ("+memberValue.GetType()+") \"" + memberValue + "\" to type " + memberType));
+								tok.AddError(token, "unable to convert element \"" + key + "\" value ("+memberValue.GetType()+") \"" + memberValue + "\" to type " + memberType);
 							} else {
 								dictionaryAdd.Invoke(result, new object[] { key, memberValue });
 							}
@@ -251,7 +250,7 @@ namespace NonStandard.Data.Parse {
 					if (e.IsText) {
 						str = e.Text;
 					} else {
-						if (errors != null) errors.Add(new ParseError(memberToken, rows, "unable to parse member ("+e.context.name+") name " + e.BeginToken + " for " + resultType));
+						tok.AddError(memberToken, "unable to parse member ("+e.context.name+") name " + e.BeginToken + " for " + resultType);
 					}
 				} else {
 					str = "dictionary member value will be resolved later";
@@ -268,19 +267,17 @@ namespace NonStandard.Data.Parse {
 			if (index < 0) {
 				index = FindIndexWithWildcard(propNames, str, true);
 				if (index < 0) {
-					if (errors != null) {
-						StringBuilder sb = new StringBuilder();
-						sb.Append("\nvalid possibilities include: ");
-						for (int i = 0; i < fieldNames.Length; ++i) {
-							if (i > 0) sb.Append(", ");
-							sb.Append(fieldNames[i]);
-						}
-						for (int i = 0; i < propNames.Length; ++i) {
-							if (i > 0 || fieldNames.Length > 0) sb.Append(", ");
-							sb.Append(propNames[i]);
-						}
-						errors.Add(new ParseError(memberToken, rows, "could not find field or property \"" + str + "\" in " + result.GetType() + sb));
+					StringBuilder sb = new StringBuilder();
+					sb.Append("\nvalid possibilities include: ");
+					for (int i = 0; i < fieldNames.Length; ++i) {
+						if (i > 0) sb.Append(", ");
+						sb.Append(fieldNames[i]);
 					}
+					for (int i = 0; i < propNames.Length; ++i) {
+						if (i > 0 || fieldNames.Length > 0) sb.Append(", ");
+						sb.Append(propNames[i]);
+					}
+					tok.AddError(memberToken, "could not find field or property \"" + str + "\" in " + result.GetType() + sb);
 					return false;
 				} else {
 					prop = props[index];
@@ -308,7 +305,7 @@ namespace NonStandard.Data.Parse {
 				// skip these delimiters as though they were whitespace.
 				case "=": case ":": case ",": break;
 				default:
-					if (errors != null) errors.Add(new ParseError(token, rows, "unexpected delimiter \"" + delim.text + "\""));
+					tok.AddError(token, "unexpected delimiter \"" + delim.text + "\"");
 					return false;
 				}
 				memberValue = state;
@@ -325,7 +322,7 @@ namespace NonStandard.Data.Parse {
 					IList<Token> parseNext = subContextUsingSameList
 							? Current.tokens.GetRange(index, indexAfterContext - index)
 							: context.tokens;
-					if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, rows, errors)) {
+					if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, tok)) {
 						return false;
 					}
 				}
@@ -336,7 +333,7 @@ namespace NonStandard.Data.Parse {
 			if (s != null) {
 				memberValue = token.ToString(s);
 				if (!CodeConvert.TryConvert(ref memberValue, memberType)) {
-					if (errors != null) errors.Add(new ParseError(token, rows, "unable to convert (" + memberValue + ") to type '" + memberType + "'"));
+					tok.AddError(token, "unable to convert (" + memberValue + ") to type '" + memberType + "'");
 					return false;
 				}
 				return true;
@@ -345,12 +342,12 @@ namespace NonStandard.Data.Parse {
 			if (sub != null) {
 				memberValue = sub.value;
 				if (!CodeConvert.TryConvert(ref memberValue, memberType)) {
-					if (errors != null) errors.Add(new ParseError(token, rows, "unable to convert substitution (" + memberValue + ") to type '" + memberType + "'"));
+					tok.AddError(token, "unable to convert substitution (" + memberValue + ") to type '" + memberType + "'");
 					return false;
 				}
 				return true;
 			}
-			if (errors != null) errors.Add(new ParseError(token, rows, "unable to parse token with meta data " + meta));
+			tok.AddError(token, "unable to parse token with meta data " + meta);
 			return false;
 		}
 

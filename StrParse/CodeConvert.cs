@@ -4,28 +4,30 @@ using System.Collections.Generic;
 
 namespace NonStandard.Data {
 	public class CodeConvert {
-		public static bool TryFill<T>(string text, ref T data, List<ParseError> errors = null) {
+		public static bool TryFill<T>(string text, ref T data, Tokenizer tokenizer = null) {
 			object value = data;
-			bool result = TryParse(typeof(T), text, ref value, errors);
+			bool result = TryParse(typeof(T), text, ref value, tokenizer);
 			data = (T)value;
 			return result;
 		}
-		public static bool TryParse<T>(string text, out T data, List<ParseError> errors = null) {
+		public static bool TryParse<T>(string text, out T data, Tokenizer tokenizer = null) {
 			object value = null;
-			bool result = TryParse(typeof(T), text, ref value, errors);
+			bool result = TryParse(typeof(T), text, ref value, tokenizer);
 			data = (T)value;
 			return result;
 		}
-		public static bool TryParse(Type type, string text, ref object data, List<ParseError> errors = null) {
-			List<Token> tokens = new List<Token>();
-			List<int> rows = new List<int>();
-			Tokenizer.Tokenize(text, tokens, rows, errors);
-			//Show.Log(tokens.DebugPrint());
-			return TryParse(type, tokens, ref data, rows, errors);
+		public static bool TryParse(Type type, string text, ref object data, Tokenizer tokenizer = null) {
+			if(tokenizer == null) {
+				tokenizer = new Tokenizer();
+			}
+			tokenizer.Tokenize(text);
+			Show.Log(Show.GetStack(4));
+			Show.Log(tokenizer.DebugPrint(-1));
+			return TryParse(type, tokenizer.tokens, ref data, tokenizer);
 		}
-		public static bool TryParse(Type type, IList<Token> tokens, ref object data, IList<int> rows, List<ParseError> errors = null) {
+		public static bool TryParse(Type type, IList<Token> tokens, ref object data, Tokenizer tokenizer) {
 			Parser p = new Parser();
-			p.Init(type, tokens, data, rows, errors);
+			p.Init(type, tokens, data, tokenizer);
 			bool result = p.TryParse();
 			data = p.result;
 			return result;

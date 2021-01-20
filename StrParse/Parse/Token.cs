@@ -22,6 +22,16 @@ namespace NonStandard.Data.Parse {
 			Context.Entry pce = meta as Context.Entry; if (pce != null) return pce.Resolve();
 			throw new DecoderFallbackException();
 		}
+		public string AsSmallText {
+			get {
+				Context.Entry e = AsContextEntry;
+				if (e != null) {
+					if (IsContextBeginning) { return e.beginDelim.ToString(); }
+					if (IsContextEnding) { return e.endDelim.ToString(); }
+				}
+				return ToString();
+			}
+		}
 		public string AsBasicToken { get { if (meta is string) { return ((string)meta).Substring(index, length); } return null; } }
 		public Delim AsDelimiter { get { return meta as Delim; } }
 		public Context.Entry AsContextEntry { get { return meta as Context.Entry; } }

@@ -34,27 +34,25 @@ namespace NonStandard.Data {
 				"../../../dialogs.txt";
 			string text = System.IO.File.ReadAllText(filepath);
 			//IList<string> tokens = StringParse.Tokenize(text);
-			List<Token> tokens = new List<Token>();
-			List<int> rows = new List<int>();
-			List<ParseError> errors = new List<ParseError>();
+			//List<Token> tokens = new List<Token>();
+			//List<int> rows = new List<int>();
+			//List<ParseError> errors = new List<ParseError>();
 			//Dictionary<string, float> dict;
 			//CodeConvert.TryParse(text, out dict, errors);
 			//Show.Log(Show.Stringify(dict, true));
 			//errors.ForEach(e => Show.Log(e.ToString()));
 			//Tokenizer.Tokenize(text, tokens, rows, errors);
 			//bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
-			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, errors);
+			Tokenizer tokenizer = new Tokenizer();
+			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, tokenizer);
 			Console.WriteLine(Show.Stringify(testData, true));
 			if (!parsed) {
-				for(int i = 0; i < errors.Count; ++i) {
-					Console.WriteLine(errors[i]);
-				}
+				Console.WriteLine(tokenizer.errors.Join("\n"));
 				Console.ReadKey();
 			}
-
-			for(int i = 0; i < rows.Count; ++i) {
-				Console.Write(rows[i] + " ");
-			} Console.WriteLine();
+			return;
+			List<Token> tokens = tokenizer.tokens;
+			List<int> rows = tokenizer.rows;
 			for (int i = 0; i < tokens.Count; ++i) {
 				Console.ForegroundColor = ((i % 2) == 0) ? ConsoleColor.White : ConsoleColor.Green;
 				Console.Write(i+"~ "+tokens[i].index+"@" + ParseError.FilePositionOf(tokens[i],rows) + ": ");
