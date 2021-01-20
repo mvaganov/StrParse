@@ -140,18 +140,36 @@ namespace NonStandard.Data.Parse {
 				}
 			}
 		}
+
 		public void ApplyOperators() {
-			if (tokens.Count == 0) return;
+			IList<int[]> paths = FindTokenPaths(t => t.meta is DelimOp);
+			Console.WriteLine(PrintTokenPaths(paths));
+		}
+		public string PrintTokenPaths(IList<int[]> paths) {
+			return paths.Join("\n", arr => {
+				Token t = GetTokenAt(tokens, arr);
+				return arr.Join(", ") + ":" + t + " @" + ParseError.FilePositionOf(t, rows);
+			});
+		}
+		Token GetTokenAt(IList<Token> path, IList<int> index) {
+			Token t = path[index[0]];
+			if (index.Count == 1) return t;
+			index = index.GetRange(1, index.Count - 1);
+			Context.Entry e = t.AsContextEntry;
+			return GetTokenAt(e.tokens, index);
+		}
+		IList<int[]> FindTokenPaths(Func<Token, bool> predicate) {
+			if (tokens.Count == 0) return new int[0][];
 			List<IList<Token>> path = new List<IList<Token>>();
 			List<int> position = new List<int>();
-			List<int[]> foundOperators = new List<int[]>();
-
+			List<int[]> paths = new List<int[]>();
 			path.Add(tokens);
 			position.Add(0);
 			while(position[position.Count-1] < path[path.Count - 1].Count) {
 				IList<Token> currentTokens = path[path.Count - 1];
 				int currentIndex = position[position.Count - 1];
 				Token token = currentTokens[currentIndex];
+				if (predicate(token)) { paths.Add(position.ToArray()); }
 				Context.Entry e = token.AsContextEntry;
 				bool incremented = false;
 				if(e != null) {
@@ -161,11 +179,6 @@ namespace NonStandard.Data.Parse {
 						currentIndex = position[position.Count - 1];
 						currentTokens = path[path.Count - 1];
 						incremented = true;
-					}
-				} else {
-					DelimOp op = token.meta as DelimOp;
-					if (op != null) {
-						foundOperators.Add(position.ToArray());
 					}
 				}
 				if (!incremented) {
@@ -183,18 +196,7 @@ namespace NonStandard.Data.Parse {
 				}
 				if (position.Count <= 0) break;
 			}
-			Console.WriteLine(foundOperators.Join("\n", arr => {
-				Token t = GetTokenAt(tokens, arr);
-				return arr.Join(", ") + ":" + t + " @" + ParseError.FilePositionOf(t, rows);
-			})); ;
-		}
-		Token GetTokenAt(IList<Token> path, IList<int> index) {
-			int i = index[0];
-			Token t = path[i];
-			if (index.Count == 1) return t;
-			index = index.GetRange(1, index.Count - 1);
-			Context.Entry e = t.AsContextEntry;
-			return GetTokenAt(e.tokens, index);
+			return paths;
 		}
 		public void ExtractContextAsSubTokenList(Context.Entry entry) {
 			if(entry.tokenCount <= 0) { throw new Exception("what just happened?"); }
