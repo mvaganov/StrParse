@@ -68,7 +68,7 @@ namespace NonStandard.Data.Parse {
 		public class Entry {
 			public Context context = null;
 			public Entry parent = null;
-			public IList<Token> tokens;
+			public List<Token> tokens;
 			public int tokenStart, tokenCount = -1;
 			public Delim beginDelim, endDelim;
 			public int depth { get { Entry p = parent; int n = 0; while (p != null) { p = p.parent; ++n; } return n; } }
@@ -77,37 +77,33 @@ namespace NonStandard.Data.Parse {
 			public string TextRaw { 
 				get {
 					Entry e = this; string str;
+					Delim d;
 					do {
 						str = e.sourceMeta as string;
+						if (str == null) { d = e.sourceMeta as Delim; if (d != null) { str = d.text; } }
 						if (str == null) { e = e.sourceMeta as Entry; }
 					} while (str == null && e != null);
-					return (str != null) ? str.Substring(IndexBegin, Length) : null;
+					return (str != null) ? str : null;
 				}
 			}
-			public string Text { get { return Unescape(); } }
+			public string GetText() { return Unescape(); }
 			public object Resolve() { return (context.resolve != null) ? context.resolve(this) : Unescape(); }
-			public bool IsText { get { return context == CodeRules.String || context == CodeRules.Char; } }
+			public bool IsText() { return context == CodeRules.String || context == CodeRules.Char; }
 			public bool IsEnclosure { get { return context == CodeRules.Expression || context == CodeRules.CodeBody || context == CodeRules.SquareBrace; } }
-			public bool IsComment { get { return context == CodeRules.CommentLine || context == CodeRules.XmlCommentLine || context == CodeRules.CommentBlock; } }
-			public Token BeginToken { get { return tokens[tokenStart]; } }
-			public Token EndToken { get { return tokens[tokenStart + tokenCount - 1]; } }
-			public int IndexBegin { get { return BeginToken.BeginIndex; } }
-			public int IndexEnd { get { return EndToken.EndIndex; } }
-			public int Length { get { return IndexEnd - IndexBegin; } }
+			public bool IsComment() { return context == CodeRules.CommentLine || context == CodeRules.XmlCommentLine || context == CodeRules.CommentBlock; }
+			public Token GetBeginToken() { return tokens[tokenStart]; }
+			public Token GetEndToken() { return tokens[tokenStart + tokenCount - 1]; }
+			public int GetIndexBegin() { return GetBeginToken().GetBeginIndex(); }
+			public int GetIndexEnd() { return GetEndToken().GetEndIndex(); }
+			public int Length { get { return GetIndexEnd() - GetIndexBegin(); } }
 			public string Unescape() {
-				if (context != CodeRules.String && context != CodeRules.Char) { return TextRaw; }
+				if (context != CodeRules.String && context != CodeRules.Char) { return TextRaw.Substring(GetIndexBegin(), Length); }
 				StringBuilder sb = new StringBuilder();
 				for (int i = tokenStart + 1; i < tokenStart + tokenCount - 1; ++i) {
 					sb.Append(tokens[i].ToString());
 				}
 				return sb.ToString();
 			}
-			//public int IndexAfter(IList<Token> tokens, int index = 0) {
-			//	if (tokenCount < 0) return tokens.Count;
-			//	int endIndex = IndexEnd;
-			//	while (index + 1 < tokens.Count && tokens[index + 1].index < endIndex) { ++index; }
-			//	return index;
-			//}
 			public void RemoveTokenRange(int index, int count) {
 				if (count <= 0) return;
 				List<Token> tok = tokens as List<Token>;
@@ -117,11 +113,12 @@ namespace NonStandard.Data.Parse {
 					int end = index + count, length = tokens.Count - end;
 					for (int i = 0; i < index; ++i) { tArr[i] = tokens[i]; }
 					for (int i = 0; i < length; ++i) { tArr[index + i] = tokens[end + i]; }
-					tokens = tArr;
+					tokens = new List<Token>(tArr);
 				}
+				tokenCount -= count;
 			}
 		}
-		public Entry GetEntry(IList<Token> tokens, int startTokenIndex, object meta, Context.Entry parent = null) {
+		public Entry GetEntry(List<Token> tokens, int startTokenIndex, object meta, Context.Entry parent = null) {
 			Entry e = new Entry { context = this, tokens = tokens, tokenStart = startTokenIndex, sourceMeta = meta, parent = parent };
 			return e;
 		}

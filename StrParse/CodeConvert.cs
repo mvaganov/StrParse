@@ -25,7 +25,7 @@ namespace NonStandard.Data {
 			Show.Log(tokenizer.DebugPrint(-1));
 			return TryParse(type, tokenizer.tokens, ref data, tokenizer);
 		}
-		public static bool TryParse(Type type, IList<Token> tokens, ref object data, Tokenizer tokenizer) {
+		public static bool TryParse(Type type, List<Token> tokens, ref object data, Tokenizer tokenizer) {
 			Parser p = new Parser();
 			p.Init(type, tokens, data, tokenizer);
 			bool result = p.TryParse();

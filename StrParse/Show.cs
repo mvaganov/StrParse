@@ -27,8 +27,18 @@ namespace NonStandard {
 			onWarning += Debug.LogWarning;
 #else
 			onLog += Console.WriteLine;
-			onError += Console.WriteLine;
-			onWarning += Console.WriteLine;
+			onError += s => {
+				ConsoleColor c = Console.ForegroundColor;
+				Console.ForegroundColor = ConsoleColor.Red;
+				Console.WriteLine(s);
+				Console.ForegroundColor = c;
+			};
+			onWarning += s => {
+				ConsoleColor c = Console.ForegroundColor;
+				Console.ForegroundColor = ConsoleColor.Yellow;
+				Console.WriteLine(s);
+				Console.ForegroundColor = c;
+			};
 #endif
 		}
 

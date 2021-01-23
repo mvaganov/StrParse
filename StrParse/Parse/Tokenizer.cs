@@ -12,6 +12,14 @@ namespace NonStandard.Data.Parse {
 		public void FilePositionOf(Token token, out int row, out int col) {
 			ParseError.FilePositionOf(token, rows, out row, out col);
 		}
+		public string FilePositionOf(Token token) {
+			while (!token.IsValid) {
+				Context.Entry e = token.GetAsContextEntry();
+				if (e == null) return "???";
+				token = e.tokens[0];
+			}
+			return ParseError.FilePositionOf(token, rows);
+		}
 		public ParseError AddError(Token token, string message) { 
 			ParseError e = new ParseError(token, rows, message); errors.Add(e); return e;
 		}
@@ -27,10 +35,10 @@ namespace NonStandard.Data.Parse {
 			string indent = "  ";
 			for(int i = 0; i < tokens.Count; ++i) {
 				Token t = tokens[i];
-				Context.Entry e = t.AsContextEntry;
+				Context.Entry e = t.GetAsContextEntry();
 				if (e != null) {
 					if (e.tokens != tokens) {
-						Context.Entry prevEntry = i > 0 ? tokens[i - 1].AsContextEntry : null;
+						Context.Entry prevEntry = i > 0 ? tokens[i - 1].GetAsContextEntry() : null;
 						if (prevEntry != null && prevEntry.tokens != tokens) {
 							sb.Append(indent);
 						} else {
@@ -41,10 +49,10 @@ namespace NonStandard.Data.Parse {
 					} else {
 						if (i == 0) { sb.Append(e.beginDelim); }
 						else if (i == tokens.Count-1) { sb.Append(e.endDelim); }
-						else { sb.Append("[").Append(tokens[i]).Append("]"); }
+						else { sb.Append(" ").Append(e.sourceMeta).Append(" "); }
 					}
 				} else {
-					sb.Append("[").Append(tokens[i]).Append("]");
+					sb.Append("'").Append(tokens[i].GetAsSmallText()).Append("'");
 				}
 			}
 			return sb.ToString();
@@ -130,7 +138,7 @@ namespace NonStandard.Data.Parse {
 		private void FinalTokenCleanup() {
 			for (int i = 0; i < tokens.Count; ++i) {
 				// any unfinished contexts must end. the last place they could end is the end of this string
-				Context.Entry e = tokens[i].AsContextEntry;
+				Context.Entry e = tokens[i].GetAsContextEntry();
 				if (e != null && e.tokenCount < 0) {
 					e.tokenCount = tokens.Count - e.tokenStart;
 					ExtractContextAsSubTokenList(e);
@@ -142,40 +150,60 @@ namespace NonStandard.Data.Parse {
 		}
 
 		public void ApplyOperators() {
-			IList<int[]> paths = FindTokenPaths(t => t.meta is DelimOp);
+			List<int[]> paths = FindTokenPaths(t => t.meta is DelimOp);
+			paths.Sort((a, b) => {
+				int comp;
+				comp = b.Length.CompareTo(a.Length);
+				if(comp != 0) { return comp; }
+				Token ta = GetTokenAt(tokens, a, out _);
+				Token tb = GetTokenAt(tokens, b, out _);
+				DelimOp da = ta.meta as DelimOp;
+				DelimOp db = tb.meta as DelimOp;
+				comp = da.order.CompareTo(db.order);
+				if (comp == 0) { comp = ta.index.CompareTo(tb.index); }
+				return comp;
+			});
 			Console.WriteLine(PrintTokenPaths(paths));
+			for(int i = 0; i < paths.Count; ++i) {
+				List<Token> path;
+				Token t = GetTokenAt(tokens, paths[i], out path);
+				DelimOp op = t.meta as DelimOp;
+				op.isSyntaxValid.Invoke(this, path, paths[i][paths[i].Length - 1]);
+			}
 		}
 		public string PrintTokenPaths(IList<int[]> paths) {
 			return paths.Join("\n", arr => {
-				Token t = GetTokenAt(tokens, arr);
+				Token t = GetTokenAt(tokens, arr, out _);
 				return arr.Join(", ") + ":" + t + " @" + ParseError.FilePositionOf(t, rows);
 			});
 		}
-		Token GetTokenAt(IList<Token> path, IList<int> index) {
-			Token t = path[index[0]];
+		Token GetTokenAt(List<Token> currentPath, IList<int> index, out List<Token> lastPath) {
+			Token t = currentPath[index[0]];
+			lastPath = currentPath;
 			if (index.Count == 1) return t;
 			index = index.GetRange(1, index.Count - 1);
-			Context.Entry e = t.AsContextEntry;
-			return GetTokenAt(e.tokens, index);
+			Context.Entry e = t.GetAsContextEntry();
+			return GetTokenAt(e.tokens, index, out lastPath);
 		}
-		IList<int[]> FindTokenPaths(Func<Token, bool> predicate) {
-			if (tokens.Count == 0) return new int[0][];
-			List<IList<Token>> path = new List<IList<Token>>();
+		List<int[]> FindTokenPaths(Func<Token, bool> predicate, bool justOne = false) {
+			if (tokens.Count == 0) return new List<int[]>();
+			List<List<Token>> path = new List<List<Token>>();
 			List<int> position = new List<int>();
 			List<int[]> paths = new List<int[]>();
 			path.Add(tokens);
 			position.Add(0);
 			while(position[position.Count-1] < path[path.Count - 1].Count) {
-				IList<Token> currentTokens = path[path.Count - 1];
+				List<Token> currentTokens = path[path.Count - 1];
 				int currentIndex = position[position.Count - 1];
 				Token token = currentTokens[currentIndex];
 				if (predicate(token)) { paths.Add(position.ToArray()); }
-				Context.Entry e = token.AsContextEntry;
+				Context.Entry e = token.GetAsContextEntry();
 				bool incremented = false;
 				if(e != null) {
 					if (currentTokens != e.tokens) {
 						position.Add(0);
 						path.Add(e.tokens);
+						if (justOne) break;
 						currentIndex = position[position.Count - 1];
 						currentTokens = path[path.Count - 1];
 						incremented = true;
@@ -201,12 +229,15 @@ namespace NonStandard.Data.Parse {
 		public void ExtractContextAsSubTokenList(Context.Entry entry) {
 			if(entry.tokenCount <= 0) { throw new Exception("what just happened?"); }
 			int indexWhereItHappens = entry.tokenStart;
-			IList<Token> subTokens = entry.tokens.GetRange(entry.tokenStart, entry.tokenCount);
-			int index = subTokens.FindIndex(t => t.AsContextEntry == entry);
+			List<Token> subTokens = entry.tokens.GetRange(entry.tokenStart, entry.tokenCount);
+			int index = subTokens.FindIndex(t => t.GetAsContextEntry() == entry);
 			entry.RemoveTokenRange(entry.tokenStart, entry.tokenCount - 1);
-			entry.tokens[indexWhereItHappens] = subTokens[index];
+			Token entryToken = subTokens[index];
+			entryToken.Invalidate();
+			entry.tokens[indexWhereItHappens] = entryToken;
 			entry.tokens = subTokens;
 			entry.tokenStart = 0;
+			entry.tokenCount = subTokens.Count;
 		}
 	}
 }

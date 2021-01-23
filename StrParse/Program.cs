@@ -46,8 +46,8 @@ namespace NonStandard.Data {
 			Tokenizer tokenizer = new Tokenizer();
 			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, tokenizer);
 			Console.WriteLine(Show.Stringify(testData, true));
-			if (!parsed) {
-				Console.WriteLine(tokenizer.errors.Join("\n"));
+			if (tokenizer.errors.Count>0) {
+				Show.Error(tokenizer.errors.Join("\n"));
 				Console.ReadKey();
 			}
 			return;
@@ -57,13 +57,13 @@ namespace NonStandard.Data {
 				Console.ForegroundColor = ((i % 2) == 0) ? ConsoleColor.White : ConsoleColor.Green;
 				Console.Write(i+"~ "+tokens[i].index+"@" + ParseError.FilePositionOf(tokens[i],rows) + ": ");
 				if(tokens[i].meta is Context.Entry e) {
-					if (e.IsText || e.IsComment) {
+					if (e.IsText() || e.IsComment()) {
 						Console.Write(e.TextRaw);
 						i += e.tokenCount-1;//e.IndexAfter(tokens, i);
 					} else {
 						Console.Write(tokens[i]);
 						Console.ForegroundColor = ConsoleColor.DarkGray;
-						Console.Write(" " + ParseError.FilePositionOf(e.BeginToken, rows) + " -> " + ParseError.FilePositionOf(e.EndToken, rows)+
+						Console.Write(" " + ParseError.FilePositionOf(e.GetBeginToken(), rows) + " -> " + ParseError.FilePositionOf(e.GetEndToken(), rows)+
 							" "+e.context.name+" depth:"+e.depth);
 					}
 					Console.ForegroundColor = ConsoleColor.DarkGray;
