@@ -146,11 +146,11 @@ namespace NonStandard.Data.Parse {
 				}
 			}
 
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < CodeRules.StandardDelimiters.Length; ++i) {
-				sb.Append(CodeRules.StandardDelimiters[i].text + " " + CodeRules.StandardDelimiters[i].description).Append("\n");
-			}
-			Show.Log(sb);
+			//StringBuilder sb = new StringBuilder();
+			//for (int i = 0; i < CodeRules.StandardDelimiters.Length; ++i) {
+			//	sb.Append(CodeRules.StandardDelimiters[i].text + " " + CodeRules.StandardDelimiters[i].description).Append("\n");
+			//}
+			//Show.Log(sb);
 		}
 		public static ParseResult HexadecimalParse(string str, int index) {
 			return NumberParse(str, index + 2, 16, false);

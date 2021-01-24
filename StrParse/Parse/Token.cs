@@ -49,9 +49,7 @@ namespace NonStandard.Data.Parse {
 		}
 		public bool IsContextEnding() {
 			Context.Entry ctx = GetAsContextEntry();
-			if (ctx != null) {
-				return ctx.GetEndToken() == this;
-			}
+			if (ctx != null) { return ctx.GetEndToken() == this; }
 			return false;
 		}
 		public bool IsValid { get { return index >= 0 && length >= 0; } }

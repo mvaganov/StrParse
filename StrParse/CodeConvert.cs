@@ -78,7 +78,7 @@ namespace NonStandard.Data {
 			} catch { return false; }
 			return true;
 		}
-		public static bool TryConvertEnumWildcard(Type typeToGet, string str, out object value, char wildcard = Parser.defaultWildcard) {
+		public static bool TryConvertEnumWildcard(Type typeToGet, string str, out object value, char wildcard = Parser.Wildcard) {
 			bool startsWith = str.EndsWith(wildcard), endsWidth = str.StartsWith(wildcard);
 			if (startsWith || endsWidth) {
 				Array a = Enum.GetValues(typeToGet);

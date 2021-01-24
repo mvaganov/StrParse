@@ -6,59 +6,57 @@ using System.Text;
 
 namespace NonStandard.Data.Parse {
 	public class Parser {
-		/// used by wildcard searches, for member names and enums
-		public const char defaultWildcard = '¤';
+		/// used by wildcard searches, for member names and enums. dramatically reduces structural typing
+		public const char Wildcard = '¤';
 		/// current data being parsed
-		object memberValue = null;
+		protected object memberValue = null;
 		/// the object being parsed into, the final result
-		public object result;
+		public object result { get; protected set; }
 		/// the type that the result needs to be
-		Type resultType;
+		protected Type resultType;
 		/// the type that the next value needs to be
-		Type memberType = null;
+		protected Type memberType = null;
 		// parse state
 		public class ParseState {
 			public int tokenIndex = 0;
 			public List<Token> tokens;
 			public Token GetToken() { return tokens[tokenIndex]; }
 		}
-		List<ParseState> state = new List<ParseState>();
-		Tokenizer tok;
-		bool isVarPrimitiveType = false, isList; // can these be designed out?
-		Token memberToken; // for objects and dictionaries
- 		// for parsing an object
-		string[] fieldNames, propNames;
-		FieldInfo[] fields;
-		FieldInfo field = null;
-		PropertyInfo[] props;
-		PropertyInfo prop = null;
+		protected List<ParseState> state = new List<ParseState>();
+		protected Tokenizer tok;
 		// for parsing a list
-		List<object> listData = null;
+		protected List<object> listData = null;
+		// for objects and dictionaries
+		protected string memberName;
+		protected Token memberToken;
+		// for parsing an object
+		protected string[] fieldNames, propNames;
+		protected FieldInfo[] fields;
+		protected FieldInfo field = null;
+		protected PropertyInfo[] props;
+		protected PropertyInfo prop = null;
 		// for parsing a dictionary
-		KeyValuePair<Type, Type> dictionaryTypes;
-		private MethodInfo dictionaryAdd = null;
+		protected KeyValuePair<Type, Type> dictionaryTypes;
+		protected MethodInfo dictionaryAdd = null;
 
-		public ParseState Current { get { return state[state.Count - 1]; } }
-		public string CurrentRowCol() { return tok.FilePositionOf(Current.GetToken()); }
-		public void AddParseState(List<Token> tokenList, int index = 0) {
+		protected ParseState Current { get { return state[state.Count - 1]; } }
+		protected void AddParseState(List<Token> tokenList, int index = 0) {
 			state.Add(new ParseState { tokens = tokenList, tokenIndex = index });
 		}
-		public void PopState() { state.RemoveAt(state.Count - 1); }
-
-		public bool Increment() {
+		protected bool Increment() {
 			if (state.Count <= 0) return false;
-			Show.Warning(Current.GetToken());
-			ParseState pstate = state[state.Count-1];
+			ParseState pstate = state[state.Count - 1];
+			//Show.Warning(pstate.GetToken());
 			++pstate.tokenIndex;
 			while (pstate.tokenIndex >= pstate.tokens.Count) {
-				PopParseState();
+				state.RemoveAt(state.Count - 1);
 				if (state.Count <= 0) return false;
 				pstate = state[state.Count - 1];
 				++pstate.tokenIndex;
 			}
 			return true;
 		}
-		public bool SkipComments(bool incrementAtLeastOnce = false) {
+		protected bool SkipComments(bool incrementAtLeastOnce = false) {
 			Context.Entry e = incrementAtLeastOnce ? Context.Entry.None : null;
 			do {
 				if (e != null && !Increment()) return false;
@@ -67,8 +65,7 @@ namespace NonStandard.Data.Parse {
 			return true;
 		}
 
-		public void PopParseState() { if (state.Count > 0) { state.RemoveAt(state.Count - 1); } }
-		public void SetResultType(Type type) {
+		protected void SetResultType(Type type) {
 			resultType = type;
 			fields = type.GetFields();
 			props = type.GetProperties();
@@ -77,12 +74,12 @@ namespace NonStandard.Data.Parse {
 			fieldNames = Array.ConvertAll(fields, f => f.Name);
 			propNames = Array.ConvertAll(props, p => p.Name);
 		}
-		public Type SetResultType(string typeName) {
+		protected Type SetResultType(string typeName) {
 			Type t = Type.GetType(typeName);
 			if (t == null) {
 				Type[] childTypes = resultType.GetSubClasses();
 				string[] typeNames = Array.ConvertAll(childTypes, ty => ty.ToString());
-				string nameSearch = !typeName.StartsWith(Parser.defaultWildcard) ? Parser.defaultWildcard + typeName : typeName;
+				string nameSearch = !typeName.StartsWith(Parser.Wildcard) ? Parser.Wildcard + typeName : typeName;
 				int index = FindIndexWithWildcard(typeNames, nameSearch, false);
 				if (index >= 0) { t = childTypes[index]; }
 			}
@@ -92,31 +89,23 @@ namespace NonStandard.Data.Parse {
 			}
 			return t;
 		}
-		public void Init(Type type, List<Token> tokens, object dataStructure, Tokenizer tokenizer) {
+		public bool Init(Type type, List<Token> tokens, object dataStructure, Tokenizer tokenizer) {
 			resultType = type;
 			tok = tokenizer;
-			AddParseState(tokens);//tokens = a_tokens;
+			state.Clear();
+			AddParseState(tokens);
 			result = dataStructure;
 			SetResultType(type);
-
-			memberType = null;
-			isVarPrimitiveType = false;
 			memberType = type.GetIListType();
-			isList = memberType != null;
 			memberToken.Invalidate();
-			if (isList) {
-				isVarPrimitiveType = false;
-				if (memberType.IsArray) {
-				} else {
-					isVarPrimitiveType = CodeConvert.IsConvertable(memberType);
-				}
+			if (memberType != null) {
 				listData = new List<object>();
 			} else {
 				try {
 					if (result == null && !resultType.IsAbstract) { result = type.GetNewInstance(); }
 				} catch (Exception e) {
-					throw new Exception("failed to create " + type + " at " +
-						ParseError.FilePositionOf(Current.tokens[0], tok.rows) + "\n" + e.ToString());
+					AddError("failed to create " + type + "\n" + e.ToString());
+					return false;
 				}
 				dictionaryTypes = type.GetIDictionaryType();
 				if (dictionaryTypes.Value != null) {
@@ -124,16 +113,13 @@ namespace NonStandard.Data.Parse {
 					dictionaryAdd = resultType.GetMethod("Add", new Type[] { dictionaryTypes.Key, dictionaryTypes.Value });
 				}
 			}
-			return;
+			return true;
 		}
 
-		private Type GoInAndFindInternalType() {
+		protected Type FindInternalType() {
 			if (Current.tokenIndex >= Current.tokens.Count) return null;
-			if (!SkipComments()) {
-				Show.Error("failed while skipping initial comment while looking for initial type");
-				return null; }
+			if (!SkipComments()) { AddError("failed skipping comment for initial type"); return null; }
 			Token token = Current.GetToken();
-
 			Delim d = token.GetAsDelimiter();
 			if (d != null) {
 				if (d.text == "=" || d.text == ":") {
@@ -144,15 +130,12 @@ namespace NonStandard.Data.Parse {
 					SkipComments(true);
 					string typeName = memberValue.ToString();
 					Type t = SetResultType(typeName);
-					Show.Log("internal type " + typeName + " (" + typeName + ")");
-					if (t == null) { tok.AddError(token, "unknown type " + typeName); }
+					//Show.Log("internal type " + typeName + " (" + typeName + ")");
+					if (t == null) { AddError("unknown type " + typeName); }
 					return t;
 				} else {
-					tok.AddError(token, "unexpected beginning token " + d.text);
+					AddError("unexpected beginning token " + d.text);
 				}
-			}
-			else {
-				Show.Log("no initial type, using "+resultType);
 			}
 			return null;
 		}
@@ -161,65 +144,37 @@ namespace NonStandard.Data.Parse {
 			Token token = Current.GetToken();
 			Context.Entry e = token.GetAsContextEntry();
 			if(e != null && e.tokens == Current.tokens) { Increment(); } // skip past the opening bracket
-
-			GoInAndFindInternalType(); // first, check if this has a more correct internal type
-			if (result == null && !isList) {
-				tok.AddError(Current.GetToken(), resultType + " needs to be more specific," +
-					" eg: \""+resultType.GetSubClasses().Join("\", \"")+"\"");
+			FindInternalType(); // first, check if this has a more correct internal type defined
+			if (result == null && listData == null) {
+				AddError("need specific " + resultType + ", eg: \"" +resultType.GetSubClasses().Join("\", \"")+"\"");
 				return false;
 			}
 			if (!SkipComments()) { return true; }
 			while (state.Count > 0 && Current.tokenIndex < Current.tokens.Count) {
 				token = Current.GetToken();
 				e = token.GetAsContextEntry();
-				if(e != null && e.tokens == Current.tokens) { break; } // found the closing bracket!
-				if (!isList) {
-					// how to parse non-lists: find what member is being assigned, get the value to assign, assign it.
+				if(e != null && e.tokens == Current.tokens) {
+					if (!token.IsContextEnding()) { AddError("unexpected state. we should never see this. ever."); }
+					break;
+				} // found the closing bracket!
+				if (listData == null) {
 					if (!memberToken.IsValid) {
-						Show.Log("trying to get memberToken @" + CurrentRowCol() + " for "+resultType);
 						if (!GetMemberNameAndAssociatedType()) { return false; }
-						if (memberValue == state) { memberValue = null; SkipComments(true); continue; }
-						Show.Log("memberToken: "+memberToken+" @"+ CurrentRowCol());
 					} else {
-						Show.Log("trying to get memberValue @" + CurrentRowCol());
-						if (!TryGetValue()) {
-							Show.Error("fail value");
-							return false;
-						}
-						if (memberValue == state) {
-							SkipComments(true);
-							continue;
-						} // this is how TryGetValue communicates value ignore
-						Show.Log(memberToken + " : "+memberValue+" @"+ CurrentRowCol());
-						if (dictionaryAdd != null) {
-							object key = memberToken.Resolve();
-							if (!memberType.IsAssignableFrom(memberValue.GetType())) {
-								tok.AddError(Current.GetToken(), "unable to convert element \"" + key + "\" value ("+memberValue.GetType()+") \"" + memberValue + "\" to type " + memberType);
-							} else {
-								dictionaryAdd.Invoke(result, new object[] { key, memberValue });
-							}
-						} else if (field != null) {
-							field.SetValue(result, memberValue);
-						} else if (prop != null) {
-							prop.SetValue(result, memberValue, null);
-						} else {
-							throw new Exception("huh? how did we get here?");
-						}
-						field = null; prop = null; memberType = dictionaryTypes.Value; memberToken.Invalidate();
+						if (!TryGetValue()) { return false; }
+						if (memberValue != state) AssignValueToMember();
 					}
 				} else {
-					Show.Log("trying to get listValue["+listData.Count+"] @" + CurrentRowCol());
 					if (!TryGetValue()) { return false; }
-					if (memberValue == state) {
-						SkipComments(true);
-						continue;
-					}
-					listData.Add(memberValue);
+					if (memberValue != state) listData.Add(memberValue);
 				}
 				SkipComments(true);
 			}
-			// doen parsing. if this is a list being parsed, create the list!
-			if (isList) {
+			FinalParseDataCompile();
+			return true;
+		}
+		protected void FinalParseDataCompile() {
+			if (listData != null) {
 				if (resultType.IsArray) {
 					Array a = Array.CreateInstance(memberType, listData.Count);
 					for (int i = 0; i < listData.Count; ++i) { a.SetValue(listData[i], i); }
@@ -230,53 +185,47 @@ namespace NonStandard.Data.Parse {
 					for (int i = 0; i < listData.Count; ++i) { ilist.Add(listData[i]); }
 				}
 			}
-			return true;
 		}
-
-		public bool GetMemberNameAndAssociatedType() {
+		protected bool GetMemberNameAndAssociatedType() {
 			memberToken = Current.GetToken();
 			if (SkipStructuredDelimiters(memberToken.GetAsDelimiter())) { memberToken.Invalidate(); return true; }
-			string str = null;
+			memberName = null;
 			Context.Entry e = memberToken.GetAsContextEntry();
 			if (e != null) {
 				if (dictionaryAdd == null) {
 					if (e.IsText()) {
-						str = e.GetText();
+						memberName = e.GetText();
 					} else {
-						tok.AddError(memberToken, "unable to parse member ("+e.context.name+") as member name for " + resultType);
+						AddError("unable to parse member ("+e.context.name+") as member name for " + resultType);
 					}
 				} else {
-					str = "dictionary member value will be resolved later";
+					memberName = "dictionary member value will be resolved later";
 				}
 				if (e.tokens == Current.tokens) {
 					Current.tokenIndex += e.tokenCount - 1;
 				}
 			} else {
-				str = memberToken.GetAsBasicToken();
+				memberName = memberToken.GetAsBasicToken();
 			}
-			if (str == null) {
+			if (memberName == null) {
 				memberToken.index = -1; memberValue = state;
 				return true;
 			}
-			return CalculateMemberDetailsBasedOnName(str);
+			memberValue = null;
+			return CalculateMemberTypeBasedOnName();
 		}
-		public bool CalculateMemberDetailsBasedOnName(string str) {
+		protected bool CalculateMemberTypeBasedOnName() {
 			if (dictionaryAdd != null) { return true; } // dictionary has no field to find
-			int index = FindIndexWithWildcard(fieldNames, str, true);
+			int index = FindIndexWithWildcard(fieldNames, memberName, true);
 			if (index < 0) {
-				index = FindIndexWithWildcard(propNames, str, true);
+				index = FindIndexWithWildcard(propNames, memberName, true);
 				if (index < 0) {
 					StringBuilder sb = new StringBuilder();
 					sb.Append("\nvalid possibilities include: ");
-					for (int i = 0; i < fieldNames.Length; ++i) {
-						if (i > 0) sb.Append(", ");
-						sb.Append(fieldNames[i]);
-					}
-					for (int i = 0; i < propNames.Length; ++i) {
-						if (i > 0 || fieldNames.Length > 0) sb.Append(", ");
-						sb.Append(propNames[i]);
-					}
-					tok.AddError(memberToken, "could not find field or property \"" + str + "\" in " + result.GetType() + sb);
+					sb.Append(fieldNames.Join(", "));
+					if (fieldNames.Length > 0 && propNames.Length > 0) { sb.Append(", "); }
+					sb.Append(propNames.Join(", "));
+					AddError("could not find field or property \"" + memberName + "\" in " + result.GetType() + sb);
 					return false;
 				} else {
 					prop = props[index];
@@ -286,27 +235,46 @@ namespace NonStandard.Data.Parse {
 				field = fields[index];
 				memberType = field.FieldType;
 			}
-			memberValue = null;
-			if (memberType.IsArray) {
-				isVarPrimitiveType = false;
-			} else {
-				isVarPrimitiveType = CodeConvert.IsConvertable(memberType);
-			}
 			return true;
 		}
-		public bool SkipStructuredDelimiters(Delim delim) {
+		protected bool SkipStructuredDelimiters(Delim delim) {
 			if (delim == null) return false;
 			switch (delim.text) {
 			// skip these delimiters as though they were whitespace.
 			case "=": case ":": case ",": break;
 			default:
-				tok.AddError(Current.GetToken(), "unexpected delimiter \"" + delim.text + "\"");
+				AddError("unexpected delimiter \"" + delim.text + "\"");
 				return false;
 			}
 			memberValue = state;
 			return true;
 		}
-		public bool TryGetValue() {
+		protected void AssignValueToMember() {
+			if (dictionaryAdd != null) {
+				object key = memberToken.Resolve();
+				bool error = false;
+				if (!dictionaryTypes.Key.IsAssignableFrom(key.GetType())) {
+					AddError("unable to convert \"" + key + "\" (" + key.GetType() + ") to " + dictionaryTypes.Key);
+					error = true;
+				}
+				if (!memberType.IsAssignableFrom(memberValue.GetType())) {
+					AddError("unable to convert element \"" + key + "\" value (" + memberValue.GetType() + ") \"" +
+						memberValue + "\" to type " + memberType);
+					error = true;
+				}
+				if (!error) { dictionaryAdd.Invoke(result, new object[] { key, memberValue }); }
+			} else {
+				if (field != null) {
+					field.SetValue(result, memberValue);
+				} else if (prop != null) {
+					prop.SetValue(result, memberValue, null);
+				} else {
+					throw new Exception("huh? how did we get here?");
+				}
+				field = null; prop = null; memberType = dictionaryTypes.Value; memberToken.Invalidate();
+			}
+		}
+		protected bool TryGetValue() {
 			memberValue = null;
 			Token token = Current.GetToken();
 			object meta = token.meta;
@@ -314,7 +282,6 @@ namespace NonStandard.Data.Parse {
 			Context.Entry context = meta as Context.Entry;
 			if (context != null) {
 				bool subContextUsingSameList = context.tokens == Current.tokens;
-				//Show.Log("next tokens list is same? " + subContextUsingSameList);
 				if (context.IsText()) {
 					memberValue = context.GetText();
 				} else {
@@ -324,17 +291,12 @@ namespace NonStandard.Data.Parse {
 							: context.tokens;
 					if (memberType == typeof(Expression)) {
 						memberValue = new Expression(parseNext);
-						Show.Log("absorbing parsed Expression " + Tokenizer.DebugPrint(parseNext));
 					} else {
-						Show.Log("going to parse: " + Tokenizer.DebugPrint(parseNext));
-						if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, tok)) {
-							return false;
-						}
+						if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, tok)) { return false; }
 					}
-					//Show.Log("memberValue: " + memberValue);
 				}
 				if (subContextUsingSameList) {
-					Current.tokenIndex += context.tokenCount - 1; // -1 because we assume an increment happens after this method
+					Current.tokenIndex += context.tokenCount - 1; // -1 because increment happens after this method
 				}
 				return true;
 			}
@@ -342,7 +304,7 @@ namespace NonStandard.Data.Parse {
 			if (s != null) {
 				memberValue = token.ToString(s);
 				if (!CodeConvert.TryConvert(ref memberValue, memberType)) {
-					tok.AddError(token, "unable to convert (" + memberValue + ") to type '" + memberType + "'");
+					AddError("unable to convert (" + memberValue + ") to type '" + memberType + "'");
 					return false;
 				}
 				return true;
@@ -351,24 +313,31 @@ namespace NonStandard.Data.Parse {
 			if (sub != null) {
 				memberValue = sub.value;
 				if (!CodeConvert.TryConvert(ref memberValue, memberType)) {
-					tok.AddError(token, "unable to convert substitution (" + memberValue + ") to type '" + memberType + "'");
+					AddError("unable to convert substitution (" + memberValue + ") to type '" + memberType + "'");
 					return false;
 				}
 				return true;
 			}
-			tok.AddError(token, "unable to parse token with meta data " + meta);
+			AddError("unable to parse token with meta data " + meta);
 			return false;
 		}
 
-		public static int FindIndexWithWildcard(string[] names, string name, bool isSorted, char wildcard = defaultWildcard) {
-			if (name.Length == 1 && name[0] == wildcard) return 0;
-			bool startsWith = name.EndsWith(wildcard), endsWith = name.StartsWith(wildcard);
-			if (startsWith && endsWith) { return Array.FindIndex(names, s => s.Contains(name.Substring(1, name.Length - 2))); }
-			if (endsWith) { name = name.Substring(1); return Array.FindIndex(names, s => s.EndsWith(name)); }
-			if (startsWith) { name = name.Substring(0, name.Length - 1); }
-			int index = isSorted ? Array.BinarySearch(names, name) : (startsWith)
-				? Array.FindIndex(names, s => s.StartsWith(name)) : Array.IndexOf(names, name);
-			if (startsWith && index < 0) { return ~index; }
+		protected void AddError(string message) { tok.AddError(Current.GetToken(), message); }
+
+		/// <param name="names"></param>
+		/// <param name="n">name to find. the needle in the names haystack</param>
+		/// <param name="sorted"></param>
+		/// <param name="wildcard"></param>
+		/// <returns></returns>
+		public static int FindIndexWithWildcard(string[] names, string n, bool sorted, char wildcard = Wildcard) {
+			if (n.Length == 1 && n[0] == wildcard) return 0;
+			bool startsW = n.EndsWith(wildcard), endsW = n.StartsWith(wildcard);
+			if (startsW && endsW) { return Array.FindIndex(names, s => s.Contains(n.Substring(1, n.Length - 2))); }
+			if (endsW) { n = n.Substring(1); return Array.FindIndex(names, s => s.EndsWith(n)); }
+			if (startsW) { n = n.Substring(0, n.Length - 1); }
+			int index = sorted ? Array.BinarySearch(names, n) : (startsW)
+				? Array.FindIndex(names, s => s.StartsWith(n)) : Array.IndexOf(names, n);
+			if (startsW && index < 0) { return ~index; }
 			return index;
 		}
 	}

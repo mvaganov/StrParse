@@ -13,9 +13,11 @@ namespace NonStandard.Data.Parse {
 			ParseError.FilePositionOf(token, rows, out row, out col);
 		}
 		public string FilePositionOf(Token token) {
+			List<Context.Entry> traversed = new List<Context.Entry>();
 			while (!token.IsValid) {
 				Context.Entry e = token.GetAsContextEntry();
-				if (e == null) return "???";
+				if (e == null || traversed.IndexOf(e) >= 0) return "???";
+				traversed.Add(e);
 				token = e.tokens[0];
 			}
 			return ParseError.FilePositionOf(token, rows);
@@ -25,14 +27,13 @@ namespace NonStandard.Data.Parse {
 		}
 		public void AddError(ParseError error) { errors.Add(error); }
 		public override string ToString() { return errors.Join(", "); }
-		public int Tokenize(string str) {
+		public void Tokenize(string str) {
 			this.str = str;
-			return Tokenize(null, 0);
+			Tokenize(null, 0);
 		}
-		public string DebugPrint(int depth = 0) { return DebugPrint(tokens, depth); }
-		public static string DebugPrint(IList<Token> tokens, int depth = 0) {
+		public string DebugPrint(int depth = 0, string indent = "  ") { return DebugPrint(tokens, depth, indent); }
+		public static string DebugPrint(IList<Token> tokens, int depth = 0, string indent = "  ") {
 			StringBuilder sb = new StringBuilder();
-			string indent = "  ";
 			for(int i = 0; i < tokens.Count; ++i) {
 				Token t = tokens[i];
 				Context.Entry e = t.GetAsContextEntry();
@@ -57,7 +58,7 @@ namespace NonStandard.Data.Parse {
 			}
 			return sb.ToString();
 		}
-		public int Tokenize(Context a_context = null, int index = 0) {
+		public void Tokenize(Context a_context = null, int index = 0) {
 			if (a_context == null) a_context = CodeRules.Default;
 			int tokenBegin = -1;
 			List<Context.Entry> contextStack = new List<Context.Entry>();
@@ -79,7 +80,6 @@ namespace NonStandard.Data.Parse {
 			FinishToken(index, ref tokenBegin); // add the last token that was still being processed
 			FinalTokenCleanup();
 			ApplyOperators();
-			return index;
 		}
 
 		private bool FinishToken(int index, ref int tokenBegin) {
@@ -163,7 +163,7 @@ namespace NonStandard.Data.Parse {
 				if (comp == 0) { comp = ta.index.CompareTo(tb.index); }
 				return comp;
 			});
-			Console.WriteLine(PrintTokenPaths(paths));
+			//Console.WriteLine(PrintTokenPaths(paths));
 			for(int i = 0; i < paths.Count; ++i) {
 				List<Token> path;
 				Token t = GetTokenAt(tokens, paths[i], out path);
