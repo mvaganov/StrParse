@@ -28,24 +28,24 @@ namespace NonStandard.Data.Parse {
 		public static Delim[] _binary_operator = new Delim[] { "&", "|", "<<", ">>", "^" };
 		// https://en.wikipedia.org/wiki/Order_of_operations#:~:text=In%20mathematics%20and%20computer%20programming,evaluate%20a%20given%20mathematical%20expression.
 		public static Delim[] _binary_logic_operatpor = new DelimOp[] {
-			new DelimOp("==",syntax:CodeRules.op_equ,resolve:CodeRules.res_equ, order:70),
-			new DelimOp("!=",syntax:CodeRules.op_neq,resolve:CodeRules.res_neq, order:71),
-			new DelimOp("<", syntax:CodeRules.op_lt_,resolve:CodeRules.res_lt_, order:60),
-			new DelimOp(">", syntax:CodeRules.op_gt_,resolve:CodeRules.res_gt_, order:61),
-			new DelimOp("<=",syntax:CodeRules.op_lte,resolve:CodeRules.res_lte, order:62),
-			new DelimOp(">=",syntax:CodeRules.op_gte,resolve:CodeRules.res_gte, order:63),
-			new DelimOp("&&",syntax:CodeRules.op_and,resolve:CodeRules.res_and, order:110),
-			new DelimOp("||",syntax:CodeRules.op_or_,resolve:CodeRules.res_or_, order:120)
+			new DelimOp("==",syntax:CodeRules.opinit_equ,resolve:CodeRules.op_equ, order:70),
+			new DelimOp("!=",syntax:CodeRules.opinit_neq,resolve:CodeRules.op_neq, order:71),
+			new DelimOp("<", syntax:CodeRules.opinit_lt_,resolve:CodeRules.op_lt_, order:60),
+			new DelimOp(">", syntax:CodeRules.opinit_gt_,resolve:CodeRules.op_gt_, order:61),
+			new DelimOp("<=",syntax:CodeRules.opinit_lte,resolve:CodeRules.op_lte, order:62),
+			new DelimOp(">=",syntax:CodeRules.opinit_gte,resolve:CodeRules.op_gte, order:63),
+			new DelimOp("&&",syntax:CodeRules.opinit_and,resolve:CodeRules.op_and, order:110),
+			new DelimOp("||",syntax:CodeRules.opinit_or_,resolve:CodeRules.op_or_, order:120)
 		};
 		public static Delim[] _assignment_operator = new Delim[] { "+=", "-=", "*=", "/=", "%=", "|=", "&=", "<<=", ">>=", "??=", "=" };
 		public static Delim[] _lambda_operator = new Delim[] { "=>" };
 		public static Delim[] _math_operator = new DelimOp[] {
-			new DelimOp("+", syntax:CodeRules.op_add,resolve:CodeRules.res_add, order:40),
-			new DelimOp("-", syntax:CodeRules.op_dif,resolve:CodeRules.res_dif, order:41),
-			new DelimOp("*", syntax:CodeRules.op_mul,resolve:CodeRules.res_mul, order:30),
-			new DelimOp("/", syntax:CodeRules.op_div,resolve:CodeRules.res_div, order:31),
-			new DelimOp("%", syntax:CodeRules.op_mod,resolve:CodeRules.res_mod, order:32),
-			new DelimOp("^^",syntax:CodeRules.op_pow,resolve:CodeRules.res_pow, order:20),
+			new DelimOp("+", syntax:CodeRules.opinit_add,resolve:CodeRules.op_add, order:40),
+			new DelimOp("-", syntax:CodeRules.opinit_dif,resolve:CodeRules.op_dif, order:41),
+			new DelimOp("*", syntax:CodeRules.opinit_mul,resolve:CodeRules.op_mul, order:30),
+			new DelimOp("/", syntax:CodeRules.opinit_div,resolve:CodeRules.op_div, order:31),
+			new DelimOp("%", syntax:CodeRules.opinit_mod,resolve:CodeRules.op_mod, order:32),
+			new DelimOp("^^",syntax:CodeRules.opinit_pow,resolve:CodeRules.op_pow, order:20),
 		};
 		public static Delim[] _hex_number_prefix = new Delim[] { new DelimCtx("0x", ctx: "0x", parseRule: HexadecimalParse) };
 		public static Delim[] _number = new Delim[] {
@@ -299,7 +299,7 @@ namespace NonStandard.Data.Parse {
 			return delims.ToArray();
 		}
 
-		public static Context.Entry op_Binary(List<Token> tokens, Tokenizer tok, int index, string contextName) {
+		public static Context.Entry opinit_Binary(List<Token> tokens, Tokenizer tok, int index, string contextName) {
 			Token t = tokens[index];
 			Context.Entry e = tokens[index].GetAsContextEntry();
 			if (e != null) {
@@ -317,42 +317,56 @@ namespace NonStandard.Data.Parse {
 				if(e != null && e.tokens == tokens) { parent = e; break; }
 			}
 			if (pIndex == index) { throw new Exception(tok.AddError(t,"parent context recursion").ToString()); }
-			e = foundContext.GetEntry(tokens, index - 1, tokens[index], parent);
+			e = foundContext.GetEntry(tokens, index - 1, t.meta, parent);
 			e.tokenCount = 3;
 			t.meta = e;
 			tokens[index] = t;
 			tok.ExtractContextAsSubTokenList(e);
 			return e;
 		}
-		public static Context.Entry op_add(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "sum"); }
-		public static Context.Entry op_dif(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "difference"); }
-		public static Context.Entry op_mul(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "product"); }
-		public static Context.Entry op_div(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "quotient"); }
-		public static Context.Entry op_mod(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "modulus"); }
-		public static Context.Entry op_pow(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "power"); }
-		public static Context.Entry op_and(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "logical and"); }
-		public static Context.Entry op_or_(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "logical or"); }
-		public static Context.Entry op_asn(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "assign"); }
-		public static Context.Entry op_equ(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "equal"); }
-		public static Context.Entry op_neq(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "not equal"); }
-		public static Context.Entry op_lt_(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "less than"); }
-		public static Context.Entry op_gt_(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "greater than"); }
-		public static Context.Entry op_lte(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "less than or equal"); }
-		public static Context.Entry op_gte(Tokenizer tok, List<Token> tokens, int index) { return op_Binary(tokens, tok, index, "greater than or equal"); }
-		public static object res_add(Tokenizer tok, List<Token> tokens, int index, object context) { return "+"; }
-		public static object res_dif(Tokenizer tok, List<Token> tokens, int index, object context) { return "-"; }
-		public static object res_mul(Tokenizer tok, List<Token> tokens, int index, object context) { return "*"; }
-		public static object res_div(Tokenizer tok, List<Token> tokens, int index, object context) { return "/"; }
-		public static object res_mod(Tokenizer tok, List<Token> tokens, int index, object context) { return "%"; }
-		public static object res_pow(Tokenizer tok, List<Token> tokens, int index, object context) { return "^^"; }
-		public static object res_and(Tokenizer tok, List<Token> tokens, int index, object context) { return "&&"; }
-		public static object res_or_(Tokenizer tok, List<Token> tokens, int index, object context) { return "||"; }
-		public static object res_asn(Tokenizer tok, List<Token> tokens, int index, object context) { return "="; }
-		public static object res_equ(Tokenizer tok, List<Token> tokens, int index, object context) { return "=="; }
-		public static object res_neq(Tokenizer tok, List<Token> tokens, int index, object context) { return "!="; }
-		public static object res_lt_(Tokenizer tok, List<Token> tokens, int index, object context) { return "<"; }
-		public static object res_gt_(Tokenizer tok, List<Token> tokens, int index, object context) { return ">"; }
-		public static object res_lte(Tokenizer tok, List<Token> tokens, int index, object context) { return "<="; }
-		public static object res_gte(Tokenizer tok, List<Token> tokens, int index, object context) { return ">="; }
+		public static Context.Entry opinit_add(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "sum"); }
+		public static Context.Entry opinit_dif(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "difference"); }
+		public static Context.Entry opinit_mul(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "product"); }
+		public static Context.Entry opinit_div(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "quotient"); }
+		public static Context.Entry opinit_mod(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "modulus"); }
+		public static Context.Entry opinit_pow(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "power"); }
+		public static Context.Entry opinit_and(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "logical and"); }
+		public static Context.Entry opinit_or_(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "logical or"); }
+		public static Context.Entry opinit_asn(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "assign"); }
+		public static Context.Entry opinit_equ(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "equal"); }
+		public static Context.Entry opinit_neq(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "not equal"); }
+		public static Context.Entry opinit_lt_(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "less than"); }
+		public static Context.Entry opinit_gt_(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "greater than"); }
+		public static Context.Entry opinit_lte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "less than or equal"); }
+		public static Context.Entry opinit_gte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "greater than or equal"); }
+
+		//public static T op_Binary<T>(Context.Entry e, object context, Func<T,T,T> binary) {
+		//	return binary.Invoke((T)left, (T)right);
+		//}
+		public static object op_add(Context.Entry e, object context) {
+			object left = e.tokens[0], right = e.tokens[2];
+			// TODO search for variables by context
+			// TODO resolve left and right if possible
+			// TODO if not possible to resolve, return a copy of this operation with simplified values
+			// TODO if values are resolved, check in switch statement if they can be resolved
+			// TODO if not, pass error into Tokenizer TODO add Tokenizer to args for error handling
+			//CodeConvert.TryConvert(ref left, typeof(T));
+			//CodeConvert.TryConvert(ref right, typeof(T));
+			return "+";
+		}
+		public static object op_dif(Context.Entry e, object context) { return "-"; }
+		public static object op_mul(Context.Entry e, object context) { return "*"; }
+		public static object op_div(Context.Entry e, object context) { return "/"; }
+		public static object op_mod(Context.Entry e, object context) { return "%"; }
+		public static object op_pow(Context.Entry e, object context) { return "^^"; }
+		public static object op_and(Context.Entry e, object context) { return "&&"; }
+		public static object op_or_(Context.Entry e, object context) { return "||"; }
+		public static object op_asn(Context.Entry e, object context) { return "="; }
+		public static object op_equ(Context.Entry e, object context) { return "=="; }
+		public static object op_neq(Context.Entry e, object context) { return "!="; }
+		public static object op_lt_(Context.Entry e, object context) { return "<"; }
+		public static object op_gt_(Context.Entry e, object context) { return ">"; }
+		public static object op_lte(Context.Entry e, object context) { return "<="; }
+		public static object op_gte(Context.Entry e, object context) { return ">="; }
 	}
 }

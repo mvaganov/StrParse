@@ -11,7 +11,10 @@ namespace NonStandard.Data.Parse {
 		public int GetEndIndex() { return index + length; }
 		public string ToString(string s) { return s.Substring(index, length); }
 		public override string ToString() {
-			Context.Entry pce = meta as Context.Entry; if (pce != null) {
+			Context.Entry pce = meta as Context.Entry;
+			if (pce != null) {
+				Delim d = pce.sourceMeta as Delim;
+				if(d != null) { return d.ToString(); }
 				if(IsValid) return ToString(pce.TextRaw);
 				string output = pce.context.name;
 				if (pce.IsText()) {
@@ -21,12 +24,13 @@ namespace NonStandard.Data.Parse {
 			}
 			return Resolve().ToString();
 		}
-		public object Resolve() {
+		public object Resolve(object context = null) {
+			if (index == -1 && length == -1) return meta;
 			if (meta == null) throw new NullReferenceException();
 			if (meta is string) return ToString((string)meta);
 			TokenSubstitution ss = meta as TokenSubstitution; if (ss != null) return ss.value;
 			Delim d = meta as Delim; if (d != null) return d.text;
-			Context.Entry pce = meta as Context.Entry; if (pce != null) return pce.Resolve();
+			Context.Entry pce = meta as Context.Entry; if (pce != null) return pce.Resolve(context);
 			throw new DecoderFallbackException();
 		}
 		public string GetAsSmallText() {
@@ -41,15 +45,16 @@ namespace NonStandard.Data.Parse {
 		public Delim GetAsDelimiter() { return meta as Delim; }
 		public Context.Entry GetAsContextEntry() { return meta as Context.Entry; }
 		public bool IsContextBeginning() {
-			Context.Entry ctx = GetAsContextEntry();
-			if (ctx != null) {
-				return ctx.GetBeginToken() == this;
-			}
+			Context.Entry ctx = GetAsContextEntry(); if (ctx != null) { return ctx.GetBeginToken() == this; }
 			return false;
 		}
 		public bool IsContextEnding() {
+			Context.Entry ctx = GetAsContextEntry(); if (ctx != null) { return ctx.GetEndToken() == this; }
+			return false;
+		}
+		public bool IsContextBeginningOrEnding() {
 			Context.Entry ctx = GetAsContextEntry();
-			if (ctx != null) { return ctx.GetEndToken() == this; }
+			if (ctx != null) { return ctx.GetEndToken() == this || ctx.GetBeginToken() == this; }
 			return false;
 		}
 		public bool IsValid { get { return index >= 0 && length >= 0; } }
@@ -64,5 +69,9 @@ namespace NonStandard.Data.Parse {
 		}
 		public static bool operator ==(Token lhs, Token rhs) { return lhs.Equals(rhs); }
 		public static bool operator !=(Token lhs, Token rhs) { return !lhs.Equals(rhs); }
+	}
+	public class TokenSubstitution {
+		public string origMeta; public object value;
+		public TokenSubstitution(string o, object v) { origMeta = o; value = v; }
 	}
 }

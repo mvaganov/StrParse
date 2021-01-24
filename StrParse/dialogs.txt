@@ -28,7 +28,7 @@
 {n¤ moreinfo o¤[{=T¤ t¤"no more info."}{=Ch¤ t¤ okthxbye c¤ done}{=Ch¤ t¤"please?"c¤"dialog welcome"}{=Co¤ c¤"++ counter"}
 {
 =Ch¤ 
-If((counter*1) >= (2*(1+1)))
+If((2*(1+1)) <= (counter*1))
 t¤ exit c¤ exit
 }
 ]}

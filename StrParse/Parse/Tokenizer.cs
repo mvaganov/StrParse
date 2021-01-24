@@ -45,6 +45,10 @@ namespace NonStandard.Data.Parse {
 						} else {
 							sb.Append("\n").Append(Show.Indent(depth + 1, indent));
 						}
+						if (e.tokenStart != 0)
+							Show.Error("woah");
+						if (e.tokenCount != e.tokens.Count)
+							Show.Error("woah!!!");
 						sb.Append(DebugPrint(e.tokens, depth + 1)).
 							Append("\n").Append(Show.Indent(depth, indent));
 					} else {
@@ -79,6 +83,7 @@ namespace NonStandard.Data.Parse {
 			}
 			FinishToken(index, ref tokenBegin); // add the last token that was still being processed
 			FinalTokenCleanup();
+			DebugPrint(-1);
 			ApplyOperators();
 		}
 
@@ -155,8 +160,9 @@ namespace NonStandard.Data.Parse {
 				int comp;
 				comp = b.Length.CompareTo(a.Length);
 				if(comp != 0) { return comp; }
-				Token ta = GetTokenAt(tokens, a, out _);
-				Token tb = GetTokenAt(tokens, b, out _);
+				Context.Entry e = null;
+				Token ta = GetTokenAt(tokens, a, ref e);
+				Token tb = GetTokenAt(tokens, b, ref e);
 				DelimOp da = ta.meta as DelimOp;
 				DelimOp db = tb.meta as DelimOp;
 				comp = da.order.CompareTo(db.order);
@@ -165,25 +171,28 @@ namespace NonStandard.Data.Parse {
 			});
 			//Console.WriteLine(PrintTokenPaths(paths));
 			for(int i = 0; i < paths.Count; ++i) {
-				List<Token> path;
-				Token t = GetTokenAt(tokens, paths[i], out path);
+				Context.Entry pathNode = null;
+				Token t = GetTokenAt(tokens, paths[i], ref pathNode);
 				DelimOp op = t.meta as DelimOp;
-				op.isSyntaxValid.Invoke(this, path, paths[i][paths[i].Length - 1]);
+				Context.Entry opEntry = op.isSyntaxValid.Invoke(this, pathNode.tokens, paths[i][paths[i].Length - 1]);
+				if(pathNode.tokenCount != pathNode.tokens.Count) {
+					pathNode.tokenCount = pathNode.tokens.Count;
+				}
 			}
 		}
 		public string PrintTokenPaths(IList<int[]> paths) {
 			return paths.Join("\n", arr => {
-				Token t = GetTokenAt(tokens, arr, out _);
+				Context.Entry e = null;
+				Token t = GetTokenAt(tokens, arr, ref e);
 				return arr.Join(", ") + ":" + t + " @" + ParseError.FilePositionOf(t, rows);
 			});
 		}
-		Token GetTokenAt(List<Token> currentPath, IList<int> index, out List<Token> lastPath) {
+		Token GetTokenAt(List<Token> currentPath, IList<int> index, ref Context.Entry lastPathNode) {
 			Token t = currentPath[index[0]];
-			lastPath = currentPath;
 			if (index.Count == 1) return t;
 			index = index.GetRange(1, index.Count - 1);
-			Context.Entry e = t.GetAsContextEntry();
-			return GetTokenAt(e.tokens, index, out lastPath);
+			lastPathNode = t.GetAsContextEntry();
+			return GetTokenAt(lastPathNode.tokens, index, ref lastPathNode);
 		}
 		List<int[]> FindTokenPaths(Func<Token, bool> predicate, bool justOne = false) {
 			if (tokens.Count == 0) return new List<int[]>();

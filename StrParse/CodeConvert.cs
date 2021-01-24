@@ -17,11 +17,9 @@ namespace NonStandard.Data {
 			return result;
 		}
 		public static bool TryParse(Type type, string text, ref object data, Tokenizer tokenizer = null) {
-			if(tokenizer == null) {
-				tokenizer = new Tokenizer();
-			}
+			if(tokenizer == null) { tokenizer = new Tokenizer(); }
 			tokenizer.Tokenize(text);
-			Show.Log(Show.GetStack(4));
+			//Show.Log(Show.GetStack(4));
 			Show.Log(tokenizer.DebugPrint(-1));
 			return TryParse(type, tokenizer.tokens, ref data, tokenizer);
 		}

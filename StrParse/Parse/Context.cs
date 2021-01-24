@@ -74,6 +74,26 @@ namespace NonStandard.Data.Parse {
 			public int depth { get { Entry p = parent; int n = 0; while (p != null) { p = p.parent; ++n; } return n; } }
 			public object sourceMeta;
 			public readonly static Entry None = new Entry();
+			public static string PrintAll(List<Token> tokens) {
+				StringBuilder sb = new StringBuilder();
+				List<List<Token>> stack = new List<List<Token>>();
+				PrintAll(tokens, sb, stack);
+				return sb.ToString();
+			}
+			protected static void PrintAll(List<Token> tokens, StringBuilder sb, List<List<Token>> stack) {
+				int recurse = stack.IndexOf(tokens);
+				stack.Add(tokens);
+				if (recurse >= 0) { sb.Append("/* recurse " + stack.Count + " */"); return; }
+				for(int i = 0; i < tokens.Count; ++i) {
+					Token t = tokens[i];
+					Entry e = t.GetAsContextEntry();
+					if (e != null && !t.IsValid) {
+						PrintAll(e.tokens, sb, stack);
+					} else {
+						sb.Append(t);
+					}
+				}
+			}
 			public string TextRaw { 
 				get {
 					Entry e = this; string str;
@@ -87,7 +107,11 @@ namespace NonStandard.Data.Parse {
 				}
 			}
 			public string GetText() { return Unescape(); }
-			public object Resolve() { return (context.resolve != null) ? context.resolve(this) : Unescape(); }
+			public object Resolve(object a_context) {
+				DelimOp op = sourceMeta as DelimOp;
+				if(op != null) { return op.resolve.Invoke(this, a_context); }
+				return (context.resolve != null) ? context.resolve(this) : Unescape();
+			}
 			public bool IsText() { return context == CodeRules.String || context == CodeRules.Char; }
 			public bool IsEnclosure { get { return context == CodeRules.Expression || context == CodeRules.CodeBody || context == CodeRules.SquareBrace; } }
 			public bool IsComment() { return context == CodeRules.CommentLine || context == CodeRules.XmlCommentLine || context == CodeRules.CommentBlock; }
@@ -95,6 +119,9 @@ namespace NonStandard.Data.Parse {
 			public Token GetEndToken() { return tokens[tokenStart + tokenCount - 1]; }
 			public int GetIndexBegin() { return GetBeginToken().GetBeginIndex(); }
 			public int GetIndexEnd() { return GetEndToken().GetEndIndex(); }
+			public bool IsBegin(Token t) { return t == GetBeginToken(); }
+			public bool IsEnd(Token t) { return t == GetEndToken(); }
+			public bool IsBeginOrEnd(Token t) { return t == GetBeginToken() || t == GetEndToken(); }
 			public int Length { get { return GetIndexEnd() - GetIndexBegin(); } }
 			public string Unescape() {
 				if (context != CodeRules.String && context != CodeRules.Char) { return TextRaw.Substring(GetIndexBegin(), Length); }
