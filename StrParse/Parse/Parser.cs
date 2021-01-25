@@ -5,6 +5,49 @@ using System.Reflection;
 using System.Text;
 
 namespace NonStandard.Data.Parse {
+	public class MemberReflectionTable {
+		public string[] fieldNames, propNames;
+		public FieldInfo[] fields;
+		public PropertyInfo[] props;
+		public void SetType(Type type) {
+			fields = type.GetFields();
+			props = type.GetProperties();
+			Array.Sort(fields, (a, b) => a.Name.CompareTo(b.Name));
+			Array.Sort(props, (a, b) => a.Name.CompareTo(b.Name));
+			fieldNames = Array.ConvertAll(fields, f => f.Name);
+			propNames = Array.ConvertAll(props, p => p.Name);
+		}
+		public override string ToString() {
+			StringBuilder sb = new StringBuilder();
+			sb.Append(fieldNames.Join(", "));
+			if (fieldNames.Length > 0 && propNames.Length > 0) { sb.Append(", "); }
+			sb.Append(propNames.Join(", "));
+			return sb.ToString();
+		}
+		public FieldInfo GetField(string name) {
+			int index = Parser.FindIndexWithWildcard(fieldNames, name, true); return (index < 0) ? null : fields[index];
+		}
+		public PropertyInfo GetProperty(string name) {
+			int index = Parser.FindIndexWithWildcard(propNames, name, true); return (index < 0) ? null : props[index];
+		}
+		public bool TryGetMemberDetails(string memberName, out Type memberType, out FieldInfo field, out PropertyInfo prop) {
+			field = GetField(memberName);
+			if (field != null) {
+				memberType = field.FieldType;
+				prop = null;
+			} else {
+				prop = GetProperty(memberName);
+				if (prop != null) {
+					memberType = prop.PropertyType;
+				} else {
+					memberType = null;
+					return false;
+				}
+			}
+			return true;
+		}
+	}
+
 	public class Parser {
 		/// used by wildcard searches, for member names and enums. dramatically reduces structural typing
 		public const char Wildcard = '¤';
@@ -12,6 +55,7 @@ namespace NonStandard.Data.Parse {
 		protected object memberValue = null;
 		/// the object being parsed into, the final result
 		public object result { get; protected set; }
+		public object parseContext;
 		/// the type that the result needs to be
 		protected Type resultType;
 		/// the type that the next value needs to be
@@ -27,13 +71,11 @@ namespace NonStandard.Data.Parse {
 		// for parsing a list
 		protected List<object> listData = null;
 		// for objects and dictionaries
-		protected string memberName;
+		protected object memberId;
 		protected Token memberToken;
 		// for parsing an object
-		protected string[] fieldNames, propNames;
-		protected FieldInfo[] fields;
+		protected MemberReflectionTable reflectTable = new MemberReflectionTable();
 		protected FieldInfo field = null;
-		protected PropertyInfo[] props;
 		protected PropertyInfo prop = null;
 		// for parsing a dictionary
 		protected KeyValuePair<Type, Type> dictionaryTypes;
@@ -65,14 +107,9 @@ namespace NonStandard.Data.Parse {
 			return true;
 		}
 
-		protected void SetResultType(Type type) {
+		public void SetResultType(Type type) {
 			resultType = type;
-			fields = type.GetFields();
-			props = type.GetProperties();
-			Array.Sort(fields, (a, b) => a.Name.CompareTo(b.Name));
-			Array.Sort(props, (a, b) => a.Name.CompareTo(b.Name));
-			fieldNames = Array.ConvertAll(fields, f => f.Name);
-			propNames = Array.ConvertAll(props, p => p.Name);
+			reflectTable.SetType(type);
 		}
 		protected Type SetResultType(string typeName) {
 			Type t = Type.GetType(typeName);
@@ -189,25 +226,25 @@ namespace NonStandard.Data.Parse {
 		protected bool GetMemberNameAndAssociatedType() {
 			memberToken = Current.GetToken();
 			if (SkipStructuredDelimiters(memberToken.GetAsDelimiter())) { memberToken.Invalidate(); return true; }
-			memberName = null;
+			memberId = null;
 			Context.Entry e = memberToken.GetAsContextEntry();
 			if (e != null) {
 				if (dictionaryAdd == null) {
 					if (e.IsText()) {
-						memberName = e.GetText();
+						memberId = e.GetText();
 					} else {
 						AddError("unable to parse member ("+e.context.name+") as member name for " + resultType);
 					}
 				} else {
-					memberName = "dictionary member value will be resolved later";
+					memberId = e.Resolve(tok, parseContext);// "dictionary member value will be resolved later";
 				}
 				if (e.tokens == Current.tokens) {
 					Current.tokenIndex += e.tokenCount - 1;
 				}
 			} else {
-				memberName = memberToken.GetAsBasicToken();
+				memberId = memberToken.GetAsBasicToken();
 			}
-			if (memberName == null) {
+			if (memberId == null) {
 				memberToken.index = -1; memberValue = state;
 				return true;
 			}
@@ -216,24 +253,10 @@ namespace NonStandard.Data.Parse {
 		}
 		protected bool CalculateMemberTypeBasedOnName() {
 			if (dictionaryAdd != null) { return true; } // dictionary has no field to find
-			int index = FindIndexWithWildcard(fieldNames, memberName, true);
-			if (index < 0) {
-				index = FindIndexWithWildcard(propNames, memberName, true);
-				if (index < 0) {
-					StringBuilder sb = new StringBuilder();
-					sb.Append("\nvalid possibilities include: ");
-					sb.Append(fieldNames.Join(", "));
-					if (fieldNames.Length > 0 && propNames.Length > 0) { sb.Append(", "); }
-					sb.Append(propNames.Join(", "));
-					AddError("could not find field or property \"" + memberName + "\" in " + result.GetType() + sb);
-					return false;
-				} else {
-					prop = props[index];
-					memberType = prop.PropertyType;
-				}
-			} else {
-				field = fields[index];
-				memberType = field.FieldType;
+			string memberName = memberId as string;
+			if(!reflectTable.TryGetMemberDetails(memberName, out memberType, out field, out prop)) {
+				AddError("could not find \"" + memberName + "\" in " + result.GetType() + ". eg: " + reflectTable);
+				return false;
 			}
 			return true;
 		}
@@ -249,20 +272,21 @@ namespace NonStandard.Data.Parse {
 			memberValue = state;
 			return true;
 		}
+		public static int AssignDictionaryMember(KeyValuePair<Type,Type> dType, MethodInfo dictionaryAddMethod,
+			object dict, object key, object value) {
+			if (!dType.Key.IsAssignableFrom(key.GetType())) { return 1; }
+			if (!dType.Value.IsAssignableFrom(value.GetType())) { return 2; }
+			dictionaryAddMethod.Invoke(dict, new object[] { key, value });
+			return 0;
+		}
 		protected void AssignValueToMember() {
 			if (dictionaryAdd != null) {
-				object key = memberToken.Resolve();
-				bool error = false;
-				if (!dictionaryTypes.Key.IsAssignableFrom(key.GetType())) {
-					AddError("unable to convert \"" + key + "\" (" + key.GetType() + ") to " + dictionaryTypes.Key);
-					error = true;
+				switch(AssignDictionaryMember(dictionaryTypes, dictionaryAdd, result, memberId, memberValue)) {
+				case 1: AddError("unable to convert key \"" + memberId + "\" (" + memberId.GetType() + 
+					") to " + dictionaryTypes.Key); break;
+				case 2: AddError("unable to convert \"" + memberId + "\" value (" + memberValue.GetType() + 
+					") \"" + memberValue + "\" to type " + memberType); break;
 				}
-				if (!memberType.IsAssignableFrom(memberValue.GetType())) {
-					AddError("unable to convert element \"" + key + "\" value (" + memberValue.GetType() + ") \"" +
-						memberValue + "\" to type " + memberType);
-					error = true;
-				}
-				if (!error) { dictionaryAdd.Invoke(result, new object[] { key, memberValue }); }
 			} else {
 				if (field != null) {
 					field.SetValue(result, memberValue);

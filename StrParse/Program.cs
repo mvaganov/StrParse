@@ -48,6 +48,16 @@ namespace NonStandard.Data {
 			Console.WriteLine(Show.Stringify(testData, true));
 			if (tokenizer.errors.Count>0) {
 				Show.Error(tokenizer.errors.Join("\n"));
+				tokenizer.errors.Clear();
+				Console.ReadKey();
+			}
+			Dialog lastDialog = testData[testData.Length - 1];
+			Dialog.DialogOption[] opt = lastDialog.options;
+			Expression ex = opt[opt.Length - 1].If;
+			Console.WriteLine(ex.DebugPrint());
+			Console.WriteLine(ex.Resolve(tokenizer, lastDialog).Join(", "));
+			if (tokenizer.errors.Count > 0) {
+				Show.Error(tokenizer.errors.Join("\n"));
 				Console.ReadKey();
 			}
 			return;

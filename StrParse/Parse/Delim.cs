@@ -22,12 +22,12 @@ namespace NonStandard.Data.Parse {
 	public class DelimOp : Delim {
 		public int order;
 		public Func<Tokenizer, List<Token>, int, Context.Entry> isSyntaxValid = null;
-		public Func<Context.Entry, object, object> resolve = null;
+		public Func<Tokenizer, Context.Entry, object, object> resolve = null;
 		public DelimOp(string delim, string name = null, string desc = null,
 			Func<string, int, ParseResult> parseRule = null,
 			Func<string, int, bool> addReq = null, int order = 100,
 			Func<Tokenizer, List<Token>, int, Context.Entry> syntax = null,
-			Func<Context.Entry, object, object> resolve = null)
+			Func<Tokenizer, Context.Entry, object, object> resolve = null)
 			: base(delim, name, desc, parseRule, addReq) {
 			this.order = order; isSyntaxValid = syntax; this.resolve = resolve;
 		}

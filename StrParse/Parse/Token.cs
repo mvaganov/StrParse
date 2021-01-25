@@ -22,15 +22,15 @@ namespace NonStandard.Data.Parse {
 				}
 				return output;
 			}
-			return Resolve().ToString();
+			return Resolve(null,null).ToString();
 		}
-		public object Resolve(object context = null) {
+		public object Resolve(Tokenizer tok, object scope) {
 			if (index == -1 && length == -1) return meta;
 			if (meta == null) throw new NullReferenceException();
 			if (meta is string) return ToString((string)meta);
 			TokenSubstitution ss = meta as TokenSubstitution; if (ss != null) return ss.value;
 			Delim d = meta as Delim; if (d != null) return d.text;
-			Context.Entry pce = meta as Context.Entry; if (pce != null) return pce.Resolve(context);
+			Context.Entry pce = meta as Context.Entry; if (pce != null) return pce.Resolve(tok, scope);
 			throw new DecoderFallbackException();
 		}
 		public string GetAsSmallText() {

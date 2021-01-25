@@ -340,33 +340,45 @@ namespace NonStandard.Data.Parse {
 		public static Context.Entry opinit_lte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "less than or equal"); }
 		public static Context.Entry opinit_gte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "greater than or equal"); }
 
-		//public static T op_Binary<T>(Context.Entry e, object context, Func<T,T,T> binary) {
-		//	return binary.Invoke((T)left, (T)right);
-		//}
-		public static object op_add(Context.Entry e, object context) {
-			object left = e.tokens[0], right = e.tokens[2];
-			// TODO search for variables by context
+		public static void op_BinaryArgs(Tokenizer tok, Context.Entry e, object scope, out object left, out object right) {
+			// TODO search for variables by context. if the variables weren't found, treat the strings as strings
 			// TODO resolve left and right if possible
 			// TODO if not possible to resolve, return a copy of this operation with simplified values
 			// TODO if values are resolved, check in switch statement if they can be resolved
 			// TODO if not, pass error into Tokenizer TODO add Tokenizer to args for error handling
 			//CodeConvert.TryConvert(ref left, typeof(T));
 			//CodeConvert.TryConvert(ref right, typeof(T));
-			return "+";
+			Token tLeft = e.tokens[0];
+			Token tRight = e.tokens[2];
+			left = tLeft.Resolve(tok, scope);
+			right = tRight.Resolve(tok, scope);
 		}
-		public static object op_dif(Context.Entry e, object context) { return "-"; }
-		public static object op_mul(Context.Entry e, object context) { return "*"; }
-		public static object op_div(Context.Entry e, object context) { return "/"; }
-		public static object op_mod(Context.Entry e, object context) { return "%"; }
-		public static object op_pow(Context.Entry e, object context) { return "^^"; }
-		public static object op_and(Context.Entry e, object context) { return "&&"; }
-		public static object op_or_(Context.Entry e, object context) { return "||"; }
-		public static object op_asn(Context.Entry e, object context) { return "="; }
-		public static object op_equ(Context.Entry e, object context) { return "=="; }
-		public static object op_neq(Context.Entry e, object context) { return "!="; }
-		public static object op_lt_(Context.Entry e, object context) { return "<"; }
-		public static object op_gt_(Context.Entry e, object context) { return ">"; }
-		public static object op_lte(Context.Entry e, object context) { return "<="; }
-		public static object op_gte(Context.Entry e, object context) { return ">="; }
+		public static object op_add(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right);
+			return left + " + " + right;
+		}
+		public static object op_dif(Tokenizer tok, Context.Entry e, object scope) { return "-"; }
+		public static object op_mul(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right);
+			return left + " * " + right;
+		}
+		public static object op_div(Tokenizer tok, Context.Entry e, object scope) { return "/"; }
+		public static object op_mod(Tokenizer tok, Context.Entry e, object scope) { return "%"; }
+		public static object op_pow(Tokenizer tok, Context.Entry e, object scope) { return "^^"; }
+		public static object op_and(Tokenizer tok, Context.Entry e, object scope) { return "&&"; }
+		public static object op_or_(Tokenizer tok, Context.Entry e, object scope) { return "||"; }
+		public static object op_asn(Tokenizer tok, Context.Entry e, object scope) { return "="; }
+		public static object op_equ(Tokenizer tok, Context.Entry e, object scope) { return "=="; }
+		public static object op_neq(Tokenizer tok, Context.Entry e, object scope) { return "!="; }
+		public static object op_lt_(Tokenizer tok, Context.Entry e, object scope) { return "<"; }
+		public static object op_gt_(Tokenizer tok, Context.Entry e, object scope) { return ">"; }
+		public static object op_lte(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right);
+			return left + " <= " + right;
+		}
+		public static object op_gte(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right);
+			return left+" >= "+right;
+		}
 	}
 }

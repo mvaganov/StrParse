@@ -8,7 +8,6 @@ namespace NonStandard.Data.Parse {
 		public string name = "default";
 		public char[] whitespace = CodeRules.WhitespaceDefault;
 		public Delim[] delimiters = CodeRules.StandardDelimiters;
-		public Func<Entry, object> resolve;
 		/// <summary>
 		/// data used to make delimiter searching very fast
 		/// </summary>
@@ -65,14 +64,18 @@ namespace NonStandard.Data.Parse {
 			if (i < 0) return null;
 			return delimiters[i];
 		}
+		public Entry GetEntry(List<Token> tokens, int startTokenIndex, object meta, Context.Entry parent = null) {
+			Entry e = new Entry { context = this, tokens = tokens, tokenStart = startTokenIndex, sourceMeta = meta, parent = parent };
+			return e;
+		}
 		public class Entry {
 			public Context context = null;
 			public Entry parent = null;
 			public List<Token> tokens;
 			public int tokenStart, tokenCount = -1;
 			public Delim beginDelim, endDelim;
-			public int depth { get { Entry p = parent; int n = 0; while (p != null) { p = p.parent; ++n; } return n; } }
 			public object sourceMeta;
+			public int depth { get { Entry p = parent; int n = 0; while (p != null) { p = p.parent; ++n; } return n; } }
 			public readonly static Entry None = new Entry();
 			public static string PrintAll(List<Token> tokens) {
 				StringBuilder sb = new StringBuilder();
@@ -107,11 +110,42 @@ namespace NonStandard.Data.Parse {
 				}
 			}
 			public string GetText() { return Unescape(); }
-			public object Resolve(object a_context) {
+			public object Resolve(Tokenizer tok, object scope, bool simplify = true) {
 				DelimOp op = sourceMeta as DelimOp;
-				if(op != null) { return op.resolve.Invoke(this, a_context); }
-				return (context.resolve != null) ? context.resolve(this) : Unescape();
+				if(op != null) { return op.resolve.Invoke(tok, this, scope); }
+				if (IsText()) { return Unescape(); }
+				List<object> result = ResolveTerms(tok, scope, tokens);
+				if (simplify) {
+					switch (result.Count) {
+					case 0: return null;
+					case 1: return result[0];
+					}
+				}
+				return result;
 			}
+			public static void FindTerms(List<Token> tokens, int start, int length, List<int> found) {
+				for(int i = 0; i < length; ++i) {
+					Token t = tokens[start + i];
+					Entry e = t.GetAsContextEntry();
+					if (e != null && t.IsValid) { continue; } // skip entry tokens (count entry sub-lists
+					found.Add(i);
+				}
+			}
+			public static List<object> ResolveTerms(Tokenizer tok, object scope, List<Token> tokens) {
+				List<object> results = new List<object>();
+				ResolveTerms(tok, scope, tokens, 0, tokens.Count, results);
+				return results;
+			}
+			public static void ResolveTerms(Tokenizer tok, object scope, List<Token> tokens, int start, int length, List<object> results) {
+				List<int> found = new List<int>();
+				FindTerms(tokens, start, length, found);
+				for (int i = 0; i < found.Count; ++i) {
+					Token t = tokens[found[i]];
+					results.Add(t.Resolve(tok, scope));
+				}
+			}
+
+			//public int FindTerms() { return CountTerms(tokens, tokenStart, tokenCount); }
 			public bool IsText() { return context == CodeRules.String || context == CodeRules.Char; }
 			public bool IsEnclosure { get { return context == CodeRules.Expression || context == CodeRules.CodeBody || context == CodeRules.SquareBrace; } }
 			public bool IsComment() { return context == CodeRules.CommentLine || context == CodeRules.XmlCommentLine || context == CodeRules.CommentBlock; }
@@ -144,10 +178,6 @@ namespace NonStandard.Data.Parse {
 				}
 				tokenCount -= count;
 			}
-		}
-		public Entry GetEntry(List<Token> tokens, int startTokenIndex, object meta, Context.Entry parent = null) {
-			Entry e = new Entry { context = this, tokens = tokens, tokenStart = startTokenIndex, sourceMeta = meta, parent = parent };
-			return e;
 		}
 	}
 }
