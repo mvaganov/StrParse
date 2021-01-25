@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
@@ -49,8 +50,8 @@ namespace NonStandard.Data.Parse {
 		};
 		public static Delim[] _hex_number_prefix = new Delim[] { new DelimCtx("0x", ctx: "0x", parseRule: HexadecimalParse) };
 		public static Delim[] _number = new Delim[] {
-			new DelimCtx("-",ctx:"number",parseRule:NumericParse,addReq:IsNextBase10NumericOrDecimal),
-			new DelimCtx(".",ctx:"number",parseRule:NumericParse,addReq:IsNextBase10Numeric),
+			new DelimCtx("-",ctx:"number",parseRule:NumericParse,addReq:IsNextCharacterBase10NumericOrDecimal),
+			new DelimCtx(".",ctx:"number",parseRule:NumericParse,addReq:IsNextCharacterBase10Numeric),
 			new DelimCtx("0",ctx:"number",parseRule:NumericParse),
 			new DelimCtx("1",ctx:"number",parseRule:NumericParse),
 			new DelimCtx("2",ctx:"number",parseRule:NumericParse),
@@ -152,6 +153,15 @@ namespace NonStandard.Data.Parse {
 			//}
 			//Show.Log(sb);
 		}
+		public static bool IsNextCharacterBase10NumericOrDecimal(string str, int index) {
+			if (index < -1 || index + 1 >= str.Length) return false;
+			char c = str[index + 1]; if (c == '.') return true;
+			int i = NumericValue(c); return (i >= 0 && i <= 9);
+		}
+		public static bool IsNextCharacterBase10Numeric(string str, int index) {
+			if (index < -1 || index + 1 >= str.Length) return false;
+			int i = NumericValue(str[index + 1]); return (i >= 0 && i <= 9);
+		}
 		public static ParseResult HexadecimalParse(string str, int index) {
 			return NumberParse(str, index + 2, 16, false);
 		}
@@ -160,15 +170,6 @@ namespace NonStandard.Data.Parse {
 		}
 		public static ParseResult IntegerParse(string str, int index) {
 			return NumberParse(str, index, 10, false);
-		}
-		public static bool IsNextBase10NumericOrDecimal(string str, int index) {
-			if (index < -1 || index + 1 >= str.Length) return false;
-			char c = str[index + 1]; if (c == '.') return true;
-			int i = NumericValue(c); return (i >= 0 && i <= 9);
-		}
-		public static bool IsNextBase10Numeric(string str, int index) {
-			if (index < -1 || index + 1 >= str.Length) return false;
-			int i = NumericValue(str[index + 1]); return (i >= 0 && i <= 9);
 		}
 		public static int NumericValue(char c) {
 			if (c >= '0' && c <= '9') return c - '0';
@@ -340,45 +341,210 @@ namespace NonStandard.Data.Parse {
 		public static Context.Entry opinit_lte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "less than or equal"); }
 		public static Context.Entry opinit_gte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "greater than or equal"); }
 
-		public static void op_BinaryArgs(Tokenizer tok, Context.Entry e, object scope, out object left, out object right) {
-			// TODO search for variables by context. if the variables weren't found, treat the strings as strings
-			// TODO resolve left and right if possible
-			// TODO if not possible to resolve, return a copy of this operation with simplified values
-			// TODO if values are resolved, check in switch statement if they can be resolved
-			// TODO if not, pass error into Tokenizer TODO add Tokenizer to args for error handling
-			//CodeConvert.TryConvert(ref left, typeof(T));
-			//CodeConvert.TryConvert(ref right, typeof(T));
-			Token tLeft = e.tokens[0];
-			Token tRight = e.tokens[2];
-			left = tLeft.Resolve(tok, scope);
-			right = tRight.Resolve(tok, scope);
+		public static void op_GetArg(Tokenizer tok, Token token, object scope, out object value, out Type type) {
+			value = token.Resolve(tok, scope);
+			type = (value != null) ? value.GetType() : null;
+			if (scope == null || type == null) { return; } // no scope, or no data, easy. we're done.
+			string memberName = value as string;
+			if(memberName == null) { return; } // data not a string (and therefore can't be a reference to scope), also easy. done.
+			Context.Entry e = token.GetAsContextEntry();
+			if(e != null && e.IsText()) { return; } // data is a string, but also explicitly meant to be a string, done.
+			// otherwise, we search for the data within the given context
+			Type scopeType = scope.GetType();
+			KeyValuePair<Type, Type> dType = scopeType.GetIDictionaryType();
+			if(dType.Key != null) {
+				IDictionary dict = scope as IDictionary;
+				if (dict.Contains(value)) { value = dict[value]; } else { value = null; }
+				type = (value != null) ? value.GetType() : null;
+				return;
+			}
+			if (!memberName.StartsWith(Parser.Wildcard) && !memberName.EndsWith(Parser.Wildcard)) {
+				FieldInfo field = scopeType.GetField(memberName);
+				if (field != null) {
+					value = field.GetValue(scope);
+					type = (value != null) ? value.GetType() : null;
+					return;
+				}
+				PropertyInfo prop = scopeType.GetProperty(memberName);
+				if(prop != null) {
+					value = prop.GetValue(scope);
+					type = (value != null) ? value.GetType() : null;
+					return;
+				}
+			} else {
+				FieldInfo[] fields = scopeType.GetFields();
+				string[] names = Array.ConvertAll(fields, f => f.ToString());
+				int index = Parser.FindIndexWithWildcard(names, memberName, false);
+				if(index >= 0) {
+					value = fields[index].GetValue(scope);
+					type = (value != null) ? value.GetType() : null;
+					return;
+				}
+				PropertyInfo[] props = scopeType.GetProperties();
+				names = Array.ConvertAll(props, p => p.ToString());
+				index = Parser.FindIndexWithWildcard(names, memberName, false);
+				if (index >= 0) {
+					value = props[index].GetValue(scope);
+					type = (value != null) ? value.GetType() : null;
+					return;
+				}
+			}
+		}
+		public static void op_BinaryArgs(Tokenizer tok, Context.Entry e, object scope, out object left, out object right, out Type lType, out Type rType) {
+			op_GetArg(tok, e.tokens[0], scope, out left, out lType);
+			op_GetArg(tok, e.tokens[2], scope, out right, out rType);
+		}
+		public static object op_asn(Tokenizer tok, Context.Entry e, object scope) { return "="; }
+		public static object op_mul(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			do {
+				bool lString = lType == typeof(string);
+				bool rString = rType == typeof(string);
+				// if one of them is a string, there is some string multiplication logic to do!
+				if (lString != rString) {
+					string meaningfulString;
+					double meaningfulNumber;
+					if (lString) {
+						if(!CodeConvert.IsConvertable(rType)) { break; }
+						meaningfulString = left.ToString();
+						CodeConvert.TryConvert(ref right, typeof(double));
+						meaningfulNumber = (double)right;
+					} else {
+						if (!CodeConvert.IsConvertable(lType)) { break; }
+						meaningfulString = right.ToString();
+						CodeConvert.TryConvert(ref left, typeof(double));
+						meaningfulNumber = (double)left;
+					}
+					StringBuilder sb = new StringBuilder();
+					for (int i = 0; i < meaningfulNumber; ++i) {
+						sb.Append(meaningfulString);
+					}
+					meaningfulNumber -= (int)meaningfulNumber;
+					int count = (int)(meaningfulString.Length * meaningfulNumber);
+					if (count > 0) {
+						sb.Append(meaningfulString.Substring(0, count));
+					}
+					return sb.ToString();
+				}
+				if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {
+					CodeConvert.TryConvert(ref left, typeof(double));
+					CodeConvert.TryConvert(ref right, typeof(double));
+					return ((double)left) * ((double)right);
+				}
+			} while (false);
+			tok.AddError(e.tokens[1], "unable to multiply " + lType + " and " + rType);
+			return e;
 		}
 		public static object op_add(Tokenizer tok, Context.Entry e, object scope) {
-			op_BinaryArgs(tok, e, scope, out object left, out object right);
-			return left + " + " + right;
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			if (lType == typeof(string) || rType == typeof(string)) { return left.ToString() + right.ToString(); }
+			if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {
+				CodeConvert.TryConvert(ref left, typeof(double));
+				CodeConvert.TryConvert(ref right, typeof(double));
+				return ((double)left) + ((double)right);
+			}
+			tok.AddError(e.tokens[1], "unable to add " + lType + " and " + rType + " : " + left + " + " + right);
+			return e;
 		}
-		public static object op_dif(Tokenizer tok, Context.Entry e, object scope) { return "-"; }
-		public static object op_mul(Tokenizer tok, Context.Entry e, object scope) {
-			op_BinaryArgs(tok, e, scope, out object left, out object right);
-			return left + " * " + right;
+		public static object op_dif(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			do {
+				if (lType == typeof(string) || rType == typeof(string)) { break; }
+				if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {
+					CodeConvert.TryConvert(ref left, typeof(double));
+					CodeConvert.TryConvert(ref right, typeof(double));
+					return ((double)left) - ((double)right);
+				}
+			} while (false);
+			tok.AddError(e.tokens[1], "unable to subtract " + lType + " and " + rType + " : " + left + " - " + right);
+			return e;
 		}
-		public static object op_div(Tokenizer tok, Context.Entry e, object scope) { return "/"; }
-		public static object op_mod(Tokenizer tok, Context.Entry e, object scope) { return "%"; }
-		public static object op_pow(Tokenizer tok, Context.Entry e, object scope) { return "^^"; }
-		public static object op_and(Tokenizer tok, Context.Entry e, object scope) { return "&&"; }
-		public static object op_or_(Tokenizer tok, Context.Entry e, object scope) { return "||"; }
-		public static object op_asn(Tokenizer tok, Context.Entry e, object scope) { return "="; }
-		public static object op_equ(Tokenizer tok, Context.Entry e, object scope) { return "=="; }
-		public static object op_neq(Tokenizer tok, Context.Entry e, object scope) { return "!="; }
-		public static object op_lt_(Tokenizer tok, Context.Entry e, object scope) { return "<"; }
-		public static object op_gt_(Tokenizer tok, Context.Entry e, object scope) { return ">"; }
+		public static object op_div(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			do {
+				if (lType == typeof(string) || rType == typeof(string)) { break; }
+				if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {
+					CodeConvert.TryConvert(ref left, typeof(double));
+					CodeConvert.TryConvert(ref right, typeof(double));
+					return ((double)left) / ((double)right);
+				}
+			} while (false);
+			tok.AddError(e.tokens[1], "unable to divide " + lType + " and " + rType + " : " + left + " / " + right);
+			return e;
+		}
+		public static object op_mod(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			do {
+				// TODO implement Python-like string token replacement
+				if (lType == typeof(string) || rType == typeof(string)) { break; }
+				if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {
+					CodeConvert.TryConvert(ref left, typeof(double));
+					CodeConvert.TryConvert(ref right, typeof(double));
+					return ((double)left) % ((double)right);
+				}
+			} while (false);
+			tok.AddError(e.tokens[1], "unable to modulo " + lType + " and " + rType + " : " + left + " % " + right);
+			return e;
+		}
+		public static object op_pow(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			do {
+				if (lType == typeof(string) || rType == typeof(string)) { break; }
+				if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {
+					CodeConvert.TryConvert(ref left, typeof(double));
+					CodeConvert.TryConvert(ref right, typeof(double));
+					return Math.Pow((double)left, (double)right);
+				}
+			} while (false);
+			tok.AddError(e.tokens[1], "unable to exponent " + lType + " and " + rType + " : " + left + " ^^ " + right);
+			return e;
+		}
+		public static bool op_reduceToBoolean(object obj, Type type) {
+			if (obj == null) return false;
+			if (type == typeof(string)) return ((string)obj).Length != 0;
+			if(!CodeConvert.TryConvert(ref obj, typeof(double))) { return true; }
+			double d = (double)obj;
+			return d != 0;
+		}
+		public static object op_and(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			return op_reduceToBoolean(left, lType) && op_reduceToBoolean(right, rType);
+		}
+		public static object op_or_(Tokenizer tok, Context.Entry e, object scope) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			return op_reduceToBoolean(left, lType) || op_reduceToBoolean(right, rType);
+		}
+		// spaceship operator
+		public static bool op_Compare(Tokenizer tok, Context.Entry e, object scope, out int compareValue) {
+			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
+			if (lType == rType) { return lType.TryCompare(left, right, out compareValue); }
+			compareValue = 0;
+			tok.AddError(e.tokens[1], "can't ("+lType+")" + left + " "+ e.tokens[1] + " " + right + "("+rType+")");
+			return false;
+		}
+		public static object op_equ(Tokenizer tok, Context.Entry e, object scope) {
+			if (op_Compare(tok, e, scope, out int compareValue)) { return compareValue == 0; }
+			return e;
+		}
+		public static object op_neq(Tokenizer tok, Context.Entry e, object scope) {
+			if (op_Compare(tok, e, scope, out int compareValue)) { return compareValue != 0; }
+			return e;
+		}
+		public static object op_lt_(Tokenizer tok, Context.Entry e, object scope) {
+			if (op_Compare(tok, e, scope, out int compareValue)) { return compareValue < 0; }
+			return e;
+		}
+		public static object op_gt_(Tokenizer tok, Context.Entry e, object scope) {
+			if (op_Compare(tok, e, scope, out int compareValue)) { return compareValue > 0; }
+			return e;
+		}
 		public static object op_lte(Tokenizer tok, Context.Entry e, object scope) {
-			op_BinaryArgs(tok, e, scope, out object left, out object right);
-			return left + " <= " + right;
+			if(op_Compare(tok, e, scope, out int compareValue)) { return compareValue <= 0; }
+			return e;
 		}
 		public static object op_gte(Tokenizer tok, Context.Entry e, object scope) {
-			op_BinaryArgs(tok, e, scope, out object left, out object right);
-			return left+" >= "+right;
+			if (op_Compare(tok, e, scope, out int compareValue)) { return compareValue >= 0; }
+			return e;
 		}
 	}
 }

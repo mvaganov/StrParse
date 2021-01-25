@@ -29,6 +29,17 @@ namespace NonStandard {
 			if (type.BaseType != null) { return GetIDictionaryType(type.BaseType); }
 			return new KeyValuePair<Type, Type>(null, null);
 		}
+		public static bool TryCompare(this Type type, object a, object b, out int compareValue) {
+			foreach (Type i in type.GetInterfaces()) {
+				if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IComparable<>)) {
+					MethodInfo compareTo = type.GetMethod("CompareTo", new Type[]{ type });
+					compareValue = (int)compareTo.Invoke(a, new object[] { b });
+					return true;
+				}
+			}
+			compareValue = 0;
+			return false;
+		}
 		public static Type[] GetSubClasses(this Type type) {
 			Type[] allLocalTypes = Assembly.GetAssembly(type).GetTypes();
 			List<Type> subTypes = new List<Type>();

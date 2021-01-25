@@ -51,11 +51,13 @@ namespace NonStandard.Data {
 				tokenizer.errors.Clear();
 				Console.ReadKey();
 			}
+			TestData td = new TestData();
+			td.number = 3;
 			Dialog lastDialog = testData[testData.Length - 1];
 			Dialog.DialogOption[] opt = lastDialog.options;
 			Expression ex = opt[opt.Length - 1].If;
 			Console.WriteLine(ex.DebugPrint());
-			Console.WriteLine(ex.Resolve(tokenizer, lastDialog).Join(", "));
+			Console.WriteLine(ex.Resolve(tokenizer, td).Join(", "));
 			if (tokenizer.errors.Count > 0) {
 				Show.Error(tokenizer.errors.Join("\n"));
 				Console.ReadKey();

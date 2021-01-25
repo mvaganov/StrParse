@@ -50,7 +50,6 @@ namespace NonStandard.Data {
 			}
 			return typeToGet.IsEnum;
 		}
-
 		public static bool TryConvert(ref object value, Type typeToGet) {
 			try {
 				if (typeToGet.IsEnum) {

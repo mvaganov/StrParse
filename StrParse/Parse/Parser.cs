@@ -5,49 +5,6 @@ using System.Reflection;
 using System.Text;
 
 namespace NonStandard.Data.Parse {
-	public class MemberReflectionTable {
-		public string[] fieldNames, propNames;
-		public FieldInfo[] fields;
-		public PropertyInfo[] props;
-		public void SetType(Type type) {
-			fields = type.GetFields();
-			props = type.GetProperties();
-			Array.Sort(fields, (a, b) => a.Name.CompareTo(b.Name));
-			Array.Sort(props, (a, b) => a.Name.CompareTo(b.Name));
-			fieldNames = Array.ConvertAll(fields, f => f.Name);
-			propNames = Array.ConvertAll(props, p => p.Name);
-		}
-		public override string ToString() {
-			StringBuilder sb = new StringBuilder();
-			sb.Append(fieldNames.Join(", "));
-			if (fieldNames.Length > 0 && propNames.Length > 0) { sb.Append(", "); }
-			sb.Append(propNames.Join(", "));
-			return sb.ToString();
-		}
-		public FieldInfo GetField(string name) {
-			int index = Parser.FindIndexWithWildcard(fieldNames, name, true); return (index < 0) ? null : fields[index];
-		}
-		public PropertyInfo GetProperty(string name) {
-			int index = Parser.FindIndexWithWildcard(propNames, name, true); return (index < 0) ? null : props[index];
-		}
-		public bool TryGetMemberDetails(string memberName, out Type memberType, out FieldInfo field, out PropertyInfo prop) {
-			field = GetField(memberName);
-			if (field != null) {
-				memberType = field.FieldType;
-				prop = null;
-			} else {
-				prop = GetProperty(memberName);
-				if (prop != null) {
-					memberType = prop.PropertyType;
-				} else {
-					memberType = null;
-					return false;
-				}
-			}
-			return true;
-		}
-	}
-
 	public class Parser {
 		/// used by wildcard searches, for member names and enums. dramatically reduces structural typing
 		public const char Wildcard = '¤';
@@ -363,6 +320,48 @@ namespace NonStandard.Data.Parse {
 				? Array.FindIndex(names, s => s.StartsWith(n)) : Array.IndexOf(names, n);
 			if (startsW && index < 0) { return ~index; }
 			return index;
+		}
+	}
+	public class MemberReflectionTable {
+		public string[] fieldNames, propNames;
+		public FieldInfo[] fields;
+		public PropertyInfo[] props;
+		public void SetType(Type type) {
+			fields = type.GetFields();
+			props = type.GetProperties();
+			Array.Sort(fields, (a, b) => a.Name.CompareTo(b.Name));
+			Array.Sort(props, (a, b) => a.Name.CompareTo(b.Name));
+			fieldNames = Array.ConvertAll(fields, f => f.Name);
+			propNames = Array.ConvertAll(props, p => p.Name);
+		}
+		public override string ToString() {
+			StringBuilder sb = new StringBuilder();
+			sb.Append(fieldNames.Join(", "));
+			if (fieldNames.Length > 0 && propNames.Length > 0) { sb.Append(", "); }
+			sb.Append(propNames.Join(", "));
+			return sb.ToString();
+		}
+		public FieldInfo GetField(string name) {
+			int index = Parser.FindIndexWithWildcard(fieldNames, name, true); return (index < 0) ? null : fields[index];
+		}
+		public PropertyInfo GetProperty(string name) {
+			int index = Parser.FindIndexWithWildcard(propNames, name, true); return (index < 0) ? null : props[index];
+		}
+		public bool TryGetMemberDetails(string memberName, out Type memberType, out FieldInfo field, out PropertyInfo prop) {
+			field = GetField(memberName);
+			if (field != null) {
+				memberType = field.FieldType;
+				prop = null;
+			} else {
+				prop = GetProperty(memberName);
+				if (prop != null) {
+					memberType = prop.PropertyType;
+				} else {
+					memberType = null;
+					return false;
+				}
+			}
+			return true;
 		}
 	}
 }
