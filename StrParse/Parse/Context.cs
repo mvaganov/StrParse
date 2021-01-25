@@ -114,14 +114,7 @@ namespace NonStandard.Data.Parse {
 				DelimOp op = sourceMeta as DelimOp;
 				if(op != null) { return op.resolve.Invoke(tok, this, scope); }
 				if (IsText()) { return Unescape(); }
-				List<object> result = ResolveTerms(tok, scope, tokens);
-				if (simplify) {
-					switch (result.Count) {
-					case 0: return null;
-					case 1: return result[0];
-					}
-				}
-				return result;
+				return Resolve(tok, scope, tokens, simplify);
 			}
 			public static void FindTerms(List<Token> tokens, int start, int length, List<int> found) {
 				for(int i = 0; i < length; ++i) {
@@ -143,6 +136,11 @@ namespace NonStandard.Data.Parse {
 					Token t = tokens[found[i]];
 					results.Add(t.Resolve(tok, scope));
 				}
+			}
+			public static object Resolve(Tokenizer tok, object scope, List<Token> tokens, bool simplify = true) {
+				List<object> result = ResolveTerms(tok, scope, tokens);
+				if (simplify) { switch (result.Count) { case 0: return null; case 1: return result[0]; } }
+				return result;
 			}
 
 			//public int FindTerms() { return CountTerms(tokens, tokenStart, tokenCount); }

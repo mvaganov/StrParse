@@ -358,7 +358,24 @@ namespace NonStandard.Data.Parse {
 				type = (value != null) ? value.GetType() : null;
 				return;
 			}
-			if (!memberName.StartsWith(Parser.Wildcard) && !memberName.EndsWith(Parser.Wildcard)) {
+			if (memberName.StartsWith(Parser.Wildcard) || memberName.EndsWith(Parser.Wildcard)) {
+				FieldInfo[] fields = scopeType.GetFields();
+				string[] names = Array.ConvertAll(fields, f => f.Name);
+				int index = Parser.FindIndexWithWildcard(names, memberName, false);
+				if (index >= 0) {
+					value = fields[index].GetValue(scope);
+					type = (value != null) ? value.GetType() : null;
+					return;
+				}
+				PropertyInfo[] props = scopeType.GetProperties();
+				names = Array.ConvertAll(props, p => p.Name);
+				index = Parser.FindIndexWithWildcard(names, memberName, false);
+				if (index >= 0) {
+					value = props[index].GetValue(scope);
+					type = (value != null) ? value.GetType() : null;
+					return;
+				}
+			} else {
 				FieldInfo field = scopeType.GetField(memberName);
 				if (field != null) {
 					value = field.GetValue(scope);
@@ -366,25 +383,8 @@ namespace NonStandard.Data.Parse {
 					return;
 				}
 				PropertyInfo prop = scopeType.GetProperty(memberName);
-				if(prop != null) {
+				if (prop != null) {
 					value = prop.GetValue(scope);
-					type = (value != null) ? value.GetType() : null;
-					return;
-				}
-			} else {
-				FieldInfo[] fields = scopeType.GetFields();
-				string[] names = Array.ConvertAll(fields, f => f.ToString());
-				int index = Parser.FindIndexWithWildcard(names, memberName, false);
-				if(index >= 0) {
-					value = fields[index].GetValue(scope);
-					type = (value != null) ? value.GetType() : null;
-					return;
-				}
-				PropertyInfo[] props = scopeType.GetProperties();
-				names = Array.ConvertAll(props, p => p.ToString());
-				index = Parser.FindIndexWithWildcard(names, memberName, false);
-				if (index >= 0) {
-					value = props[index].GetValue(scope);
 					type = (value != null) ? value.GetType() : null;
 					return;
 				}

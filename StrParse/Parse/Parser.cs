@@ -12,7 +12,7 @@ namespace NonStandard.Data.Parse {
 		protected object memberValue = null;
 		/// the object being parsed into, the final result
 		public object result { get; protected set; }
-		public object parseContext;
+		public object scope;
 		/// the type that the result needs to be
 		protected Type resultType;
 		/// the type that the next value needs to be
@@ -193,7 +193,7 @@ namespace NonStandard.Data.Parse {
 						AddError("unable to parse member ("+e.context.name+") as member name for " + resultType);
 					}
 				} else {
-					memberId = e.Resolve(tok, parseContext);// "dictionary member value will be resolved later";
+					memberId = e.Resolve(tok, scope);// "dictionary member value will be resolved later";
 				}
 				if (e.tokens == Current.tokens) {
 					Current.tokenIndex += e.tokenCount - 1;
@@ -273,7 +273,11 @@ namespace NonStandard.Data.Parse {
 					if (memberType == typeof(Expression)) {
 						memberValue = new Expression(parseNext);
 					} else {
-						if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, tok)) { return false; }
+						if (CodeConvert.IsConvertable(memberType) && !subContextUsingSameList) {
+							memberValue = context.Resolve(tok, scope);
+						} else {
+							if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, tok)) { return false; }
+						}
 					}
 				}
 				if (subContextUsingSameList) {
