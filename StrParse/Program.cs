@@ -12,7 +12,7 @@ namespace NonStandard.Data {
 		public abstract class DialogOption {
 			public string text;
 			public TextAnchor anchorText = TextAnchor.UpperLeft;
-			public Expression If; // conditional requirement for this option
+			public Expression requires; // conditional requirement for this option
 		}
 		[Serializable] public class Text : DialogOption { }
 		[Serializable] public class Choice : DialogOption { public string command; }
@@ -55,9 +55,9 @@ namespace NonStandard.Data {
 			td.number = 3;
 			Dialog lastDialog = testData[testData.Length - 1];
 			Dialog.DialogOption[] opt = lastDialog.options;
-			Expression ex = opt[opt.Length - 1].If;
+			Expression ex = opt[opt.Length - 1].requires;
 			Console.WriteLine(ex.DebugPrint());
-			Console.WriteLine(ex.Resolve(tokenizer, td).Join(", "));
+			Console.WriteLine(ex.Resolve(tokenizer, null).Join(", "));
 			if (tokenizer.errors.Count > 0) {
 				Show.Error(tokenizer.errors.Join("\n"));
 				Console.ReadKey();

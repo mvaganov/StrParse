@@ -341,15 +341,16 @@ namespace NonStandard.Data.Parse {
 		public static Context.Entry opinit_lte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "less than or equal"); }
 		public static Context.Entry opinit_gte(Tokenizer tok, List<Token> tokens, int index) { return opinit_Binary(tokens, tok, index, "greater than or equal"); }
 
-		public static void op_GetArg(Tokenizer tok, Token token, object scope, out object value, out Type type) {
+		public static void op_ResolveToken(Tokenizer tok, Token token, object scope, out object value, out Type type) {
 			value = token.Resolve(tok, scope);
 			type = (value != null) ? value.GetType() : null;
 			if (scope == null || type == null) { return; } // no scope, or no data, easy. we're done.
-			string memberName = value as string;
-			if(memberName == null) { return; } // data not a string (and therefore can't be a reference to scope), also easy. done.
+			string name = value as string;
+			if (name == null) { return; } // data not a string (can't be a reference from scope), also easy. done.
 			Context.Entry e = token.GetAsContextEntry();
-			if(e != null && e.IsText()) { return; } // data is a string, but also explicitly meant to be a string, done.
+			if (e != null && e.IsText()) { return; } // data is explicitly meant to be a string, done.
 			// otherwise, we search for the data within the given context
+			if (name == "null") { value = null; type = null; return; } // TODO compare constants like null, true, false
 			Type scopeType = scope.GetType();
 			KeyValuePair<Type, Type> dType = scopeType.GetIDictionaryType();
 			if(dType.Key != null) {
@@ -358,10 +359,10 @@ namespace NonStandard.Data.Parse {
 				type = (value != null) ? value.GetType() : null;
 				return;
 			}
-			if (memberName.StartsWith(Parser.Wildcard) || memberName.EndsWith(Parser.Wildcard)) {
+			if (name.StartsWith(Parser.Wildcard) || name.EndsWith(Parser.Wildcard)) {
 				FieldInfo[] fields = scopeType.GetFields();
 				string[] names = Array.ConvertAll(fields, f => f.Name);
-				int index = Parser.FindIndexWithWildcard(names, memberName, false);
+				int index = Parser.FindIndexWithWildcard(names, name, false);
 				if (index >= 0) {
 					value = fields[index].GetValue(scope);
 					type = (value != null) ? value.GetType() : null;
@@ -369,20 +370,20 @@ namespace NonStandard.Data.Parse {
 				}
 				PropertyInfo[] props = scopeType.GetProperties();
 				names = Array.ConvertAll(props, p => p.Name);
-				index = Parser.FindIndexWithWildcard(names, memberName, false);
+				index = Parser.FindIndexWithWildcard(names, name, false);
 				if (index >= 0) {
 					value = props[index].GetValue(scope);
 					type = (value != null) ? value.GetType() : null;
 					return;
 				}
 			} else {
-				FieldInfo field = scopeType.GetField(memberName);
+				FieldInfo field = scopeType.GetField(name);
 				if (field != null) {
 					value = field.GetValue(scope);
 					type = (value != null) ? value.GetType() : null;
 					return;
 				}
-				PropertyInfo prop = scopeType.GetProperty(memberName);
+				PropertyInfo prop = scopeType.GetProperty(name);
 				if (prop != null) {
 					value = prop.GetValue(scope);
 					type = (value != null) ? value.GetType() : null;
@@ -391,8 +392,8 @@ namespace NonStandard.Data.Parse {
 			}
 		}
 		public static void op_BinaryArgs(Tokenizer tok, Context.Entry e, object scope, out object left, out object right, out Type lType, out Type rType) {
-			op_GetArg(tok, e.tokens[0], scope, out left, out lType);
-			op_GetArg(tok, e.tokens[2], scope, out right, out rType);
+			op_ResolveToken(tok, e.tokens[0], scope, out left, out lType);
+			op_ResolveToken(tok, e.tokens[2], scope, out right, out rType);
 		}
 		public static object op_asn(Tokenizer tok, Context.Entry e, object scope) { return "="; }
 		public static object op_mul(Tokenizer tok, Context.Entry e, object scope) {

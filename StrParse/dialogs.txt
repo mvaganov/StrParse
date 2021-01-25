@@ -26,9 +26,5 @@
 },
 // a lot of structural syntax is optional, and the wildcard character '¤' can be used if enough identifying text is given
 {n¤ moreinfo o¤[{=T¤ t¤"no more info."}{=Ch¤ t¤ okthxbye c¤ done}{=Ch¤ t¤"please?"c¤"dialog welcome"}{=Co¤ c¤"++ counter"}
-{
-=Ch¤ 
-If((2*(1+1)) <= (nu¤*1))
-t¤ exit*3 c¤ exit
-}
+{=Ch¤ r¤((2*(1+1))<=(nu¤*1))t¤ exit*3 c¤ exit}
 ]}
