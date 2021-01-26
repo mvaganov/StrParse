@@ -43,8 +43,12 @@ namespace NonStandard.Data {
 			//errors.ForEach(e => Show.Log(e.ToString()));
 			//Tokenizer.Tokenize(text, tokens, rows, errors);
 			//bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
+			Dictionary<string, float> dict = new Dictionary<string, float>() {
+				["number"] = 10.0f,
+				["xp"] = 1000
+			};
 			Tokenizer tokenizer = new Tokenizer();
-			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, tokenizer);
+			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, dict, tokenizer);
 			Console.WriteLine(Show.Stringify(testData, true));
 			if (tokenizer.errors.Count>0) {
 				Show.Error(tokenizer.errors.Join("\n"));
@@ -56,8 +60,8 @@ namespace NonStandard.Data {
 			Dialog lastDialog = testData[testData.Length - 1];
 			Dialog.DialogOption[] opt = lastDialog.options;
 			Expression ex = opt[opt.Length - 1].requires;
-			Console.WriteLine(ex.DebugPrint());
-			Console.WriteLine(ex.Resolve(tokenizer, null).Join(", "));
+//			Console.WriteLine(ex.DebugPrint());
+			Console.WriteLine(ex.Resolve(tokenizer, dict).Join(", "));
 			if (tokenizer.errors.Count > 0) {
 				Show.Error(tokenizer.errors.Join("\n"));
 				Console.ReadKey();

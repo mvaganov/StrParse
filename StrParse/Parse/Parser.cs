@@ -83,7 +83,7 @@ namespace NonStandard.Data.Parse {
 			}
 			return t;
 		}
-		public bool Init(Type type, List<Token> tokens, object dataStructure, Tokenizer tokenizer) {
+		public bool Init(Type type, List<Token> tokens, object dataStructure, Tokenizer tokenizer, object scope) {
 			resultType = type;
 			tok = tokenizer;
 			state.Clear();
@@ -92,6 +92,7 @@ namespace NonStandard.Data.Parse {
 			SetResultType(type);
 			memberType = type.GetIListType();
 			memberToken.Invalidate();
+			this.scope = scope;
 			if (memberType != null) {
 				listData = new List<object>();
 			} else {
@@ -276,7 +277,7 @@ namespace NonStandard.Data.Parse {
 						if (CodeConvert.IsConvertable(memberType) && !subContextUsingSameList) {
 							memberValue = context.Resolve(tok, scope);
 						} else {
-							if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, tok)) { return false; }
+							if (!CodeConvert.TryParse(memberType, parseNext, ref memberValue, scope, tok)) { return false; }
 						}
 					}
 				}
@@ -324,6 +325,14 @@ namespace NonStandard.Data.Parse {
 				? Array.FindIndex(names, s => s.StartsWith(n)) : Array.IndexOf(names, n);
 			if (startsW && index < 0) { return ~index; }
 			return index;
+		}
+		public static bool IsWildcardMatch(string possibility, string n, char wildcard = Wildcard) {
+			if (n.Length == 1 && n[0] == wildcard) return true;
+			bool startsW = n.EndsWith(wildcard), endsW = n.StartsWith(wildcard);
+			if (startsW && endsW) { return possibility.Contains(n.Substring(1, n.Length - 2)); }
+			if (endsW) { n = n.Substring(1); return possibility.EndsWith(n); }
+			if (startsW) { n = n.Substring(0, n.Length - 1); }
+			return possibility.StartsWith(n);
 		}
 	}
 	public class MemberReflectionTable {
