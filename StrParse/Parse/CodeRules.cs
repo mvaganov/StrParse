@@ -227,7 +227,7 @@ namespace NonStandard.Data.Parse {
 			double fraction = 0;
 			if (includeDecimal && index < str.Length && str[index - 1] == '.') {
 				numDigits = CountNumericCharactersAt(str, index, numberBase, false, false);
-				if (numDigits == 0) { pr.SetError("decimal point with no subsequent digits", 0, index); }
+				if (numDigits == 0) { pr.SetError("decimal point with no subsequent digits", index, 1, index); }
 				long b = numberBase;
 				for (int i = 0; i < numDigits; ++i) {
 					fraction += NumericValue(str[index + i]) / (double)b;
@@ -245,13 +245,13 @@ namespace NonStandard.Data.Parse {
 			ParseResult r = new ParseResult(0, null); // by default, nothing happened
 			if (str.Length <= index) { return r.SetError("invalid arguments"); }
 			if (str[index] != '\\') { return r.SetError("expected escape sequence starting with '\\'"); }
-			if (str.Length <= index + 1) { return r.SetError("unable to parse escape sequence at end of string", 0, 1); }
+			if (str.Length <= index + 1) { return r.SetError("unable to parse escape sequence at end of string", 1, 0, 1); }
 			char c = str[index + 1];
 			switch (c) {
 			case '\n': return new ParseResult(index + 2, "");
 			case '\r':
 				if (str.Length <= index + 2 || str[index + 2] != '\n') {
-					return new ParseResult(index, "", "expected windows line ending", 0, 2);
+					return new ParseResult(index, "", "expected windows line ending", 2, 0, 2);
 				}
 				return new ParseResult(index + 3, "");
 			case 'a': return new ParseResult(2, "\a");
@@ -287,7 +287,7 @@ namespace NonStandard.Data.Parse {
 				return NumberParse(str, index + 1, digitCount, 8, false).AddToLength(1);
 			}
 			}
-			return r.SetError("unknown escape sequence", 0, 1);
+			return r.SetError("unknown escape sequence", 1, 0, 1);
 		}
 
 		private static void GiveDesc(Delim[] delims, string desc) {
@@ -349,7 +349,6 @@ namespace NonStandard.Data.Parse {
 			if (name == null) {  // data not a string (can't be a reference from scope), also easy. done.
 				List<object> args = value as List<object>;
 				if(args != null) {
-					Show.Log(args.Join(", "));
 					for(int i = 0; i < args.Count; ++i) {
 						bool remove = false;
 						switch (args[i]) { case ",": remove = true; break; }
@@ -635,7 +634,7 @@ namespace NonStandard.Data.Parse {
 			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
 			if (lType == rType) { return lType.TryCompare(left, right, out compareValue); }
 			compareValue = 0;
-			tok.AddError(e.tokens[1], "can't ("+lType+")" + left + " "+ e.tokens[1] + " " + right + "("+rType+")");
+			tok.AddError(e.tokens[1].index, "can't operate ("+lType+")"+left+" "+e.tokens[1]+" ("+rType+")"+right);
 			return false;
 		}
 		public static object op_equ(Tokenizer tok, Context.Entry e, object scope) {

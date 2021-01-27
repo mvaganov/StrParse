@@ -170,7 +170,6 @@ namespace NonStandard.Data.Parse {
 				if (comp == 0) { comp = ta.index.CompareTo(tb.index); }
 				return comp;
 			});
-			//Console.WriteLine(PrintTokenPaths(paths));
 			for(int i = 0; i < paths.Count; ++i) {
 				Context.Entry pathNode = null;
 				Token t = GetTokenAt(tokens, paths[i], ref pathNode);

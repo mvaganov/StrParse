@@ -2,15 +2,15 @@
 
 namespace NonStandard.Data.Parse {
 	public struct ParseError {
-		public int row, col;
+		public int index, row, col;
 		public string message;
-		public ParseError(int r, int c, string m) { row = r; col = c; message = m; }
+		public ParseError(int i, int r, int c, string m) { index = i; row = r; col = c; message = m; }
 		public ParseError(Token token, IList<int> rows, string m) :this(token.index, rows, m) { }
 		public ParseError(int index, IList<int> rows, string m) {
 			FilePositionOf(index, rows, out row, out col);
-			message = m;
+			message = m; this.index = index;
 		}
-		public override string ToString() { return "@" + row + "," + col + ": " + message; }
+		public override string ToString() { return "@" + (row+1) + "," + col + "[" + index + "]: " + message; }
 		public static ParseError None = default(ParseError);
 		public void OffsetBy(int index, IList<int> rows) {
 			int r, c; FilePositionOf(index, rows, out r, out c); row += r; col += c;
