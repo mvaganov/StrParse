@@ -347,7 +347,20 @@ namespace NonStandard.Data.Parse {
 			if (scope == null || type == null) { return; } // no scope, or no data, easy. we're done.
 			string name = value as string;
 			if (name == null) {  // data not a string (can't be a reference from scope), also easy. done.
-				// TODO if this is a list of tokens, resolve each one, except for commas, those should be removed
+				List<object> args = value as List<object>;
+				if(args != null) {
+					Show.Log(args.Join(", "));
+					for(int i = 0; i < args.Count; ++i) {
+						bool remove = false;
+						switch (args[i]) { case ",": remove = true; break; }
+						if (remove) { args.RemoveAt(i--); } else {
+							op_ResolveToken(tok, new Token(args[i], -1, -1), scope, out value, out type);
+							args[i] = value;
+						}
+					}
+					value = args;
+					type = args.GetType();
+				}
 				return; 
 			}
 			Context.Entry e = token.GetAsContextEntry();
@@ -375,7 +388,7 @@ namespace NonStandard.Data.Parse {
 						}
 					}
 				}
-				if (dict.Contains(name)) { value = dict[name]; } else { value = null; }
+				if (dict.Contains(name)) { value = dict[name]; }
 				type = (value != null) ? value.GetType() : null;
 				return;
 			}
@@ -493,7 +506,7 @@ namespace NonStandard.Data.Parse {
 			tok.AddError(e.tokens[1], "unable to divide " + lType + " and " + rType + " : " + left + " / " + right);
 			return e;
 		}
-		public static int FindEndOfNextToken(Tokenizer tok, Token t, string str, int index, out int started, out int tokenId) {
+		public static int FindEndOfNextToken(Tokenizer tok, int startI, string str, int index, out int started, out int tokenId) {
 			started = -1;
 			tokenId = -1;
 			for (int i = index; i < str.Length; ++i) {
@@ -501,20 +514,20 @@ namespace NonStandard.Data.Parse {
 				switch (c) {
 				case '{':
 					if (i + 1 >= str.Length) {
-						ParseError err = tok.AddError(t, "unexpected end of format token"+
-							(tokenId<0?"": (" "+tokenId.ToString()))); err.col += i;
+						ParseError err = tok.AddError(startI+i, "unexpected end of format token"+
+							(tokenId<0?"": (" "+tokenId.ToString())));
 						return -1;
 					}
 					if (str[i + 1] != '{') {
 						if (started >= 0) {
-							ParseError err = tok.AddError(t, "unexpected beginning of new format token" +
-								(tokenId < 0 ? "" : (" " + tokenId.ToString()))); err.col += i;
+							ParseError err = tok.AddError(startI + i, "unexpected beginning of new format token" +
+								(tokenId < 0 ? "" : (" " + tokenId.ToString())));
 							return -1;
 						} else {
 							started = i;
 							ParseResult pr = IntegerParse(str, i + 1);
 							if (pr.IsError) {
-								pr.error.OffsetBy(t, tok.rows);
+								pr.error.OffsetBy(startI + i, tok.rows);
 								tok.AddError(pr.error);
 							} else {
 								tokenId = (int)(long)pr.replacementValue;
@@ -527,8 +540,8 @@ namespace NonStandard.Data.Parse {
 				case '}':
 					if (started>=0) {
 						if (tokenId < 0) {
-							ParseError err = tok.AddError(t, "format token missing leading base 10 integer index" +
-								(tokenId < 0 ? "" : (" " + tokenId.ToString()))); err.col += started+1;
+							ParseError err = tok.AddError(startI + i, "token missing leading base 10 integer index" +
+								(tokenId < 0 ? "" : (" " + tokenId.ToString())));
 						}
 						return i + 1;
 					}
@@ -536,10 +549,34 @@ namespace NonStandard.Data.Parse {
 				}
 			}
 			if (started >= 0) {
-				ParseError err = tok.AddError(t, "expected end of format token" +
-					(tokenId < 0 ? "" : (" " + tokenId.ToString()))); err.col += started;
+				ParseError err = tok.AddError(startI+started, "expected end of format token" +
+					(tokenId < 0 ? "" : (" " + tokenId.ToString())));
 			}
 			return -1;
+		}
+		public static string Format(string format, List<object> args, object scope, Tokenizer tok, int tIndex) {
+			StringBuilder sb = new StringBuilder();
+			int index = 0, start, end, tokenId;
+			do {
+				end = FindEndOfNextToken(tok, tIndex, format, index, out start, out tokenId);
+				if (end < 0) {
+					sb.Append(format.Substring(index));
+					index = format.Length;
+				} else {
+					if (tokenId < 0 || tokenId >= args.Count) {
+						ParseError err = tok.AddError(tIndex, "invalid format token index (limit " +
+							args.Count + ")" + (tokenId < 0 ? "" : (" " + tokenId.ToString()))); err.col += start;
+						sb.Append(format.Substring(index, end - index));
+					} else {
+						if (index != start) { sb.Append(format.Substring(index, start - index)); }
+						string str = format.Substring(start, end - start);
+						str = str.Replace("{" + tokenId, "{" + 0);
+						sb.AppendFormat(str, args[tokenId]);
+					}
+					index = end;
+				}
+			} while (index < format.Length);
+			return sb.ToString();
 		}
 		public static object op_mod(Tokenizer tok, Context.Entry e, object scope) {
 			op_BinaryArgs(tok, e, scope, out object left, out object right, out Type lType, out Type rType);
@@ -553,25 +590,7 @@ namespace NonStandard.Data.Parse {
 					} else {
 						args = right as List<object>;
 					}
-					StringBuilder sb = new StringBuilder();
-					int index = 0, start, end, tokenId;
-					do {
-						end = FindEndOfNextToken(tok, e.tokens[0], format, index, out start, out tokenId);
-						if(end < 0) {
-							sb.Append(format.Substring(index));
-							index = format.Length;
-						} else {
-							if(tokenId < 0 || tokenId >= args.Count) {
-								ParseError err = tok.AddError(e.tokens[0], "invalid format token index (limit " + 
-									args.Count+")"+ (tokenId < 0 ? "" : (" " + tokenId.ToString()))); err.col += start;
-								sb.Append(format.Substring(index, end - index));
-							} else {
-								sb.AppendFormat(format.Substring(index, end - index), args[tokenId]);
-							}
-							index = end;
-						}
-					} while (index < format.Length);
-					return sb.ToString();
+					return Format(format, args, scope, tok, e.tokens[0].index);
 				}
 				if (lType == typeof(string) || rType == typeof(string)) { break; }
 				if (CodeConvert.IsConvertable(lType) && CodeConvert.IsConvertable(rType)) {

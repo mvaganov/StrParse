@@ -22,9 +22,10 @@ namespace NonStandard.Data.Parse {
 			}
 			return ParseError.FilePositionOf(token, rows);
 		}
-		public ParseError AddError(Token token, string message) { 
-			ParseError e = new ParseError(token, rows, message); errors.Add(e); return e;
+		public ParseError AddError(int index, string message) {
+			ParseError e = new ParseError(index, rows, message); errors.Add(e); return e;
 		}
+		public ParseError AddError(Token token, string message) { return AddError(token.index, message); }
 		public void AddError(ParseError error) { errors.Add(error); }
 		public override string ToString() { return errors.Join(", "); }
 		public void Tokenize(string str) {
@@ -102,7 +103,7 @@ namespace NonStandard.Data.Parse {
 			if (delim.parseRule != null) {
 				ParseResult pr = delim.parseRule.Invoke(str, index);
 				if (pr.IsError && errors != null) {
-					pr.error.OffsetBy(delimToken, rows);
+					pr.error.OffsetBy(delimToken.index, rows);
 					errors.Add(pr.error);
 				}
 				if (pr.replacementValue != null) {
