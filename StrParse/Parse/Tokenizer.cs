@@ -28,9 +28,9 @@ namespace NonStandard.Data.Parse {
 		public ParseError AddError(Token token, string message) { return AddError(token.index, message); }
 		public void AddError(ParseError error) { errors.Add(error); }
 		public override string ToString() { return errors.Join(", "); }
-		public void Tokenize(string str) {
+		public void Tokenize(string str, Context context = null) {
 			this.str = str;
-			Tokenize(null, 0);
+			Tokenize(context, 0);
 		}
 		public string DebugPrint(int depth = 0, string indent = "  ") { return DebugPrint(tokens, depth, indent); }
 		public static string DebugPrint(IList<Token> tokens, int depth = 0, string indent = "  ") {
@@ -46,10 +46,6 @@ namespace NonStandard.Data.Parse {
 						} else {
 							sb.Append("\n").Append(Show.Indent(depth + 1, indent));
 						}
-						if (e.tokenStart != 0)
-							Show.Error("woah");
-						if (e.tokenCount != e.tokens.Count)
-							Show.Error("woah!!!");
 						sb.Append(DebugPrint(e.tokens, depth + 1)).
 							Append("\n").Append(Show.Indent(depth, indent));
 					} else {
@@ -64,9 +60,10 @@ namespace NonStandard.Data.Parse {
 			return sb.ToString();
 		}
 		public void Tokenize(Context a_context = null, int index = 0) {
-			if (a_context == null) a_context = CodeRules.Default;
-			int tokenBegin = -1;
 			List<Context.Entry> contextStack = new List<Context.Entry>();
+			if (a_context == null) a_context = CodeRules.Default;
+			else { contextStack.Add(a_context.GetEntry(tokens, -1, null)); }
+			int tokenBegin = -1;
 			Context currentContext = a_context;
 			while (index < str.Length) {
 				char c = str[index];

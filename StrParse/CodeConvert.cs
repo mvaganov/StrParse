@@ -1,6 +1,7 @@
 ﻿using NonStandard.Data.Parse;
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace NonStandard.Data {
 	public class CodeConvert {
@@ -87,6 +88,20 @@ namespace NonStandard.Data {
 			}
 			value = Enum.Parse(typeToGet, str);
 			return true;
+		}
+
+		public static string Format(string format, object scope, Tokenizer tokenizer = null) {
+			if (tokenizer == null) { tokenizer = new Tokenizer(); }
+			tokenizer.Tokenize(format, CodeRules.CodeInString);
+			StringBuilder sb = new StringBuilder();
+			for(int i = 0; i < tokenizer.tokens.Count; ++i) {
+				object obj;
+				Type type;
+				Token token = tokenizer.tokens[i];
+				CodeRules.op_ResolveToken(tokenizer, token, scope, out obj, out type);
+				sb.Append(obj.ToString());
+			}
+			return sb.ToString();
 		}
 	}
 }

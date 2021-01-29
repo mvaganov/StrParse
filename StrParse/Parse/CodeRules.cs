@@ -9,7 +9,7 @@ namespace NonStandard.Data.Parse {
 
 		public static Context
 			String, Char, Number, Hexadecimal, Expression, SquareBrace, GenericArgs, CodeBody,
-			Sum, Difference, Product, Quotient, Modulus, Power, LogicalAnd, LogicalOr,
+			CodeInString, Sum, Difference, Product, Quotient, Modulus, Power, LogicalAnd, LogicalOr,
 			Assignment, Equal, LessThan, GreaterThan, LessThanOrEqual, GreaterThanOrEqual,
 			NotEqual, XmlCommentLine, CommentLine, CommentBlock, Default;
 
@@ -18,6 +18,12 @@ namespace NonStandard.Data.Parse {
 		public static Delim[] _char_escape_sequence = new Delim[] { new Delim("\\", parseRule: UnescapeString) };
 		public static Delim[] _expression_delimiter = new Delim[] { new DelimCtx("(", ctx: "()", s: true), new DelimCtx(")", ctx: "()", e: true) };
 		public static Delim[] _code_body_delimiter = new Delim[] { new DelimCtx("{", ctx: "{}", s: true), new DelimCtx("}", ctx: "{}", e: true) };
+		public static Delim[] _string_code_body_delimiter = new Delim[] {
+			new DelimCtx("\"", ctx: "codeInString", s: true, e: true), 
+			new Delim("{{",parseRule:(str,i)=>new ParseResult(2,"{")),
+			new Delim("}}",parseRule:(str,i)=>new ParseResult(2,"}")),
+			new DelimCtx("{", ctx: "{}", s: true), 
+			new DelimCtx("}", ctx: "{}", e: true) };
 		public static Delim[] _square_brace_delimiter = new Delim[] { new DelimCtx("[", ctx: "[]", s: true), new DelimCtx("]", ctx: "[]", e: true) };
 		public static Delim[] _triangle_brace_delimiter = new Delim[] { new DelimCtx("<", ctx: "<>", s: true), new DelimCtx(">", ctx: "<>", e: true) };
 		public static Delim[] _ternary_operator_delimiter = new Delim[] { "?", ":", "??" };
@@ -107,6 +113,7 @@ namespace NonStandard.Data.Parse {
 			SquareBrace = new Context("[]");
 			GenericArgs = new Context("<>");
 			CodeBody = new Context("{}");
+			CodeInString = new Context("codeInString");
 			Sum = new Context("sum", CodeRules.None);
 			Difference = new Context("difference", CodeRules.None);
 			Product = new Context("product", CodeRules.None);
@@ -126,6 +133,8 @@ namespace NonStandard.Data.Parse {
 			CommentLine = new Context("//");
 			CommentBlock = new Context("/**/");
 
+			CodeInString.delimiters = CombineDelims(_string_code_body_delimiter);
+			CodeInString.whitespace = CodeRules.WhitespaceNone;
 			XmlCommentLine.delimiters = CodeRules.XmlCommentDelimiters;
 			CommentLine.delimiters = CodeRules.LineCommentDelimiters;
 			CommentBlock.delimiters = CodeRules.CommentBlockDelimiters;
@@ -426,6 +435,13 @@ namespace NonStandard.Data.Parse {
 		public static void op_BinaryArgs(Tokenizer tok, Context.Entry e, object scope, out object left, out object right, out Type lType, out Type rType) {
 			op_ResolveToken(tok, e.tokens[0], scope, out left, out lType);
 			op_ResolveToken(tok, e.tokens[2], scope, out right, out rType);
+			// upcast to double. all the math operations expect doubles only, for algorithm simplicity
+			if (lType != typeof(string) && lType != typeof(double) && CodeConvert.IsConvertable(lType)) {
+				CodeConvert.TryConvert(ref left, typeof(double)); lType = typeof(double);
+			}
+			if (rType != typeof(string) && rType != typeof(double) && CodeConvert.IsConvertable(rType)) {
+				CodeConvert.TryConvert(ref right, typeof(double)); rType = typeof(double);
+			}
 		}
 		public static object op_asn(Tokenizer tok, Context.Entry e, object scope) { return "="; }
 		public static object op_mul(Tokenizer tok, Context.Entry e, object scope) {

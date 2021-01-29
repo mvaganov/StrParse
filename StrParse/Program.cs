@@ -44,8 +44,8 @@ namespace NonStandard.Data {
 			//Tokenizer.Tokenize(text, tokens, rows, errors);
 			//bool parsed = CodeConvert.TryParse(text, out TestData testData, errors);
 			Dictionary<string, float> dict = new Dictionary<string, float>() {
-	//			["number"] = 10.0f,
-//				["xp"] = 1000
+				["number"] = 10.0f,
+				["xp"] = 1000
 			};
 			Tokenizer tokenizer = new Tokenizer();
 			bool parsed = CodeConvert.TryParse(text, out Dialog[] testData, dict, tokenizer);
@@ -66,6 +66,9 @@ namespace NonStandard.Data {
 				Show.Error(tokenizer.errors.Join("\n"));
 				Console.ReadKey();
 			}
+
+			Show.Log(CodeConvert.Format("hello world {xp} more text {number > 2*8} wat {{hey}} wat", dict));
+
 			return;
 			List<Token> tokens = tokenizer.tokens;
 			List<int> rows = tokenizer.rows;
